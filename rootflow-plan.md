@@ -325,7 +325,7 @@ Enable full node interactivity in the visualization: clicking a node opens a det
 
 ### Sub-Task 8 — Webview: Suggested Fix Panel & One-Click Apply
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 **Intent:**
 Surface the LLM-suggested fix in a dedicated panel within the Webview, show a before/after diff, and allow the developer to apply the patch to the workspace file with a single click.

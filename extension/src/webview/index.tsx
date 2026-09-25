@@ -17,9 +17,10 @@
 
 import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
-import type { RootFlowResult, GraphNode } from "shared/schema";
+import type { RootFlowResult, GraphNode, SuggestedFix } from "shared/schema";
 import MetroGraph from "./MetroGraph";
 import NodeDetailPanel from "./NodeDetailPanel";
+import FixPanel from "./FixPanel";
 import Tooltip from "./Tooltip";
 import "./metro.css";
 
@@ -47,6 +48,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [fixDismissed, setFixDismissed] = useState<boolean>(false);
   const [tooltip, setTooltip] = useState<{
     node: GraphNode;
     x: number;
@@ -62,6 +64,7 @@ const App: React.FC = () => {
           setLoading(false);
           setError(null);
           setSelectedNode(null);
+          setFixDismissed(false);
           setResult(msg.data ?? null);
           break;
         case "loading":
@@ -99,6 +102,16 @@ const App: React.FC = () => {
 
   function handleOpenDiff(hash: string) {
     vscodeApi.postMessage({ command: "openDiff", hash });
+  }
+
+  function handleApplyFix(fix: SuggestedFix) {
+    vscodeApi.postMessage({
+      command: "applyFix",
+      filePath: fix.filePath,
+      originalCode: fix.originalCode,
+      fixedCode: fix.fixedCode,
+      patch: fix.patch,
+    });
   }
 
   // ── Render helpers ─────────────────────────────────────────────────────────
@@ -156,6 +169,13 @@ const App: React.FC = () => {
   const commitInfo =
     selectedNode?.role === "origin" ? (result.rootCause.introducedByCommit ?? null) : null;
 
+  // A fix panel is shown when the result has a suggestedFix and the user
+  // has not dismissed it this session.
+  const showFix =
+    !fixDismissed &&
+    result.suggestedFix &&
+    (result.suggestedFix.patch || result.suggestedFix.description);
+
   return (
     <div className="rf-shell">
       {/* Header */}
@@ -198,6 +218,16 @@ const App: React.FC = () => {
           />
         )}
       </div>
+
+      {/* Fix panel — bottom sheet, always visible when a fix is present */}
+      {showFix && (
+        <FixPanel
+          fix={result.suggestedFix}
+          confidenceScore={result.rootCause.confidenceScore ?? 0}
+          onApply={handleApplyFix}
+          onDismiss={() => setFixDismissed(true)}
+        />
+      )}
 
       {/* Hover tooltip */}
       {tooltip && (

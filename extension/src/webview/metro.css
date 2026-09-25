@@ -369,3 +369,167 @@ body.vscode-light .rf-ndp__code .hljs-title    { color: #795e26; }
 .rf-ndp__diff-line--add { color: #4ec975; background: rgba(78,201,117,0.08); }
 .rf-ndp__diff-line--del { color: #f14c4c; background: rgba(241,76,76,0.08); }
 .rf-ndp__diff-line--hunk { color: var(--rf-text-muted); }
+
+/* ── Fix Panel ───────────────────────────────────────────────────────────── */
+
+/*
+ * The fix panel sits at the bottom of the .rf-shell column as a collapsible
+ * bottom sheet.  It has a fixed max-height with internal scroll so it never
+ * pushes the metro graph off screen on small panels.
+ */
+.rf-fix {
+  flex-shrink: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border-top: 2px solid var(--vscode-focusBorder, #007acc);
+  background: var(--vscode-sideBar-background, #252526);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 12px;
+  color: var(--rf-text);
+  padding: 0 0 8px;
+}
+
+/* Header row: title + badge + action buttons */
+.rf-fix__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--rf-border);
+  background: var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.rf-fix__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rf-text);
+  white-space: nowrap;
+}
+
+/* Confidence badge — colour changes with confidence level */
+.rf-fix__badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.rf-fix__badge--high   { background: rgba(78,201,117,0.2);  color: #4ec975; }
+.rf-fix__badge--medium { background: rgba(212,160,23,0.2);  color: #d4a017; }
+.rf-fix__badge--low    { background: rgba(241,76,76,0.2);   color: #f14c4c; }
+
+/* Action buttons row */
+.rf-fix__actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Secondary (outline) button variant for Dismiss */
+.rf-button--secondary {
+  background: transparent;
+  color: var(--vscode-button-foreground, #fff);
+  border: 1px solid var(--vscode-button-background, #0e639c);
+}
+.rf-button--secondary:hover {
+  background: var(--vscode-button-hoverBackground, rgba(14,99,156,0.25));
+  opacity: 1;
+}
+
+/* Description text */
+.rf-fix__description {
+  margin: 8px 14px 4px;
+  line-height: 1.6;
+  color: var(--rf-text);
+  font-size: 12px;
+}
+
+/* File path row */
+.rf-fix__filepath {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 14px;
+  font-size: 11px;
+}
+
+.rf-fix__filepath-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rf-text-muted);
+  flex-shrink: 0;
+}
+
+.rf-fix__filepath-value {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  word-break: break-all;
+}
+
+/* Diff section */
+.rf-fix__diff {
+  padding: 0 14px 4px;
+}
+
+.rf-fix__diff-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rf-text-muted);
+  margin-bottom: 4px;
+}
+
+/* ── DiffView ─────────────────────────────────────────────────────────────── */
+
+.rf-diff__pre {
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--rf-border);
+  border-radius: 3px;
+  overflow-x: auto;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.rf-diff__code {
+  font-family: var(--vscode-editor-font-family, "Courier New", monospace);
+  font-size: 11px;
+  white-space: pre;
+}
+
+.rf-diff__line         { display: block; color: var(--rf-text); }
+.rf-diff__line--add    { color: #4ec975; background: rgba(78,201,117,0.08); }
+.rf-diff__line--del    { color: #f14c4c; background: rgba(241,76,76,0.08); }
+.rf-diff__line--hunk   { color: var(--rf-text-muted); }
+.rf-diff__line--header { color: var(--rf-text-muted); font-style: italic; }
+
+.rf-diff__empty {
+  margin: 0;
+  color: var(--rf-text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* Light theme overrides for diff colours */
+body.vscode-light .rf-diff__line--add  { color: #1a7340; background: rgba(26,115,64,0.08); }
+body.vscode-light .rf-diff__line--del  { color: #b91c1c; background: rgba(185,28,28,0.08); }
+body.vscode-light .rf-fix__badge--high   { background: rgba(26,115,64,0.15);  color: #1a7340; }
+body.vscode-light .rf-fix__badge--medium { background: rgba(160,120,0,0.15);  color: #a07800; }
+body.vscode-light .rf-fix__badge--low    { background: rgba(185,28,28,0.15);  color: #b91c1c; }
