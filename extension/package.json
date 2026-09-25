@@ -1,0 +1,80 @@
+{
+  "name": "rootflow",
+  "displayName": "RootFlow",
+  "description": "Automatically identifies root causes of bugs, traces propagation, and suggests fixes — rendered as an interactive metro-style visualization.",
+  "version": "0.1.0",
+  "publisher": "rootflow",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:rootflow.analyze"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rootflow.analyze",
+        "title": "RootFlow: Analyze Bug",
+        "category": "RootFlow"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "rootflow.analyze",
+          "when": "editorHasSelection",
+          "group": "navigation@100"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "rootflow.analyze",
+          "group": "navigation@100"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "rootflow.analyze",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorHasSelection || terminalFocus"
+      }
+    ],
+    "configuration": {
+      "title": "RootFlow",
+      "properties": {
+        "rootflow.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter used to run the RootFlow backend server."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "build:webview": "node esbuild.js --webview",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "d3": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  }
+}

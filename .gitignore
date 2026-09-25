@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files
+backend/.env.example
+backend/.env
+.env
+.env.*
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
