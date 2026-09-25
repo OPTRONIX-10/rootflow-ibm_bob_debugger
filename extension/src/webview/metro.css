@@ -1,0 +1,371 @@
+/**
+ * metro.css
+ *
+ * Styles for the MetroGraph component and its children.
+ * All colors reference VS Code CSS custom properties so the UI respects
+ * both the dark and light themes automatically.
+ *
+ * Role-based CSS variables are declared on :root and can be overridden per-theme.
+ */
+
+/* ── Role color palette ──────────────────────────────────────────────────── */
+:root {
+  /* Dark theme defaults (VS Code default dark) */
+  --rf-color-origin:      #e05252;
+  --rf-color-propagation: #d4a017;
+  --rf-color-failure:     #c0392b;
+  --rf-color-related:     #8e9aad;
+  --rf-color-spine-track: #4c9be8;
+
+  --rf-surface:           var(--vscode-editor-background, #1e1e1e);
+  --rf-border:            var(--vscode-panel-border, #3c3c3c);
+  --rf-text:              var(--vscode-foreground, #cccccc);
+  --rf-text-muted:        var(--vscode-descriptionForeground, #8c8c8c);
+}
+
+/* Light theme overrides via VS Code body class */
+body.vscode-light {
+  --rf-color-origin:      #cc3333;
+  --rf-color-propagation: #a07800;
+  --rf-color-failure:     #991f1f;
+  --rf-color-related:     #6b7a90;
+  --rf-color-spine-track: #1a6fcf;
+}
+
+/* High-contrast overrides */
+body.vscode-high-contrast {
+  --rf-color-origin:      #ff6666;
+  --rf-color-propagation: #ffcc00;
+  --rf-color-failure:     #ff3333;
+  --rf-color-related:     #aaaaaa;
+}
+
+/* ── Metro graph container ───────────────────────────────────────────────── */
+.metro-graph {
+  display: flex;
+  flex-direction: column;
+  background: var(--rf-surface);
+  border: 1px solid var(--rf-border);
+  border-radius: 4px;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  box-sizing: border-box;
+}
+
+.metro-graph--empty {
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  color: var(--rf-text-muted);
+  font-size: 13px;
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+/* ── Legend bar ──────────────────────────────────────────────────────────── */
+.metro-graph__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--rf-border);
+  background: var(--vscode-sideBar-background, #252526);
+  font-family: var(--vscode-font-family, sans-serif);
+  user-select: none;
+}
+
+/* ── SVG canvas ──────────────────────────────────────────────────────────── */
+.metro-graph__svg {
+  flex: 1;
+  background: var(--rf-surface);
+  cursor: grab;
+  overflow: visible;
+}
+
+.metro-graph__svg:active {
+  cursor: grabbing;
+}
+
+/* ── Metro lines ─────────────────────────────────────────────────────────── */
+.metro-lines path {
+  transition: stroke-opacity 0.15s ease;
+}
+
+.edge-label {
+  font-family: var(--vscode-font-family, sans-serif);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── Station nodes ───────────────────────────────────────────────────────── */
+.station-node {
+  transition: opacity 0.15s ease;
+}
+
+.station-node:hover {
+  opacity: 0.88;
+}
+
+.station-node text {
+  user-select: none;
+  pointer-events: none;
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+/* ── Focus outline (keyboard nav) ────────────────────────────────────────── */
+.station-node:focus-visible circle,
+.station-node:focus-visible rect,
+.station-node:focus-visible polygon {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: 2px;
+}
+
+/* ── Node Detail Panel ───────────────────────────────────────────────────── */
+
+/*
+ * The panel slides in on the right side of the main content row.
+ * Width is fixed; the graph area takes the remaining space via flex-shrink.
+ */
+.rf-ndp {
+  width: 320px;
+  min-width: 260px;
+  max-width: 400px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--rf-border);
+  background: var(--vscode-sideBar-background, #252526);
+  overflow: hidden;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 12px;
+  color: var(--rf-text);
+}
+
+/* Header row: badge + symbol name + close button */
+.rf-ndp__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rf-border);
+  background: var(--vscode-editorGroupHeader-tabsBackground, #2d2d2d);
+  flex-shrink: 0;
+}
+
+.rf-ndp__symbol {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--rf-text);
+}
+
+.rf-ndp__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--rf-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.rf-ndp__close:hover { color: var(--rf-text); }
+
+/* File / line link row */
+.rf-ndp__location {
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--rf-border);
+  background: var(--vscode-editor-background, #1e1e1e);
+  flex-shrink: 0;
+}
+
+.rf-ndp__file-link {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  padding: 0;
+  text-align: left;
+  word-break: break-all;
+  text-decoration: none;
+}
+.rf-ndp__file-link:hover { text-decoration: underline; }
+
+.rf-ndp__line-num {
+  color: var(--rf-text-muted);
+}
+
+/* Scrollable body */
+.rf-ndp__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 0 16px;
+}
+
+/* Generic section */
+.rf-ndp__section {
+  padding: 10px 12px 0;
+}
+
+.rf-ndp__section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rf-text-muted);
+  margin-bottom: 5px;
+}
+
+/* Code block */
+.rf-ndp__code-pre {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--rf-border);
+  border-radius: 3px;
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.55;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.rf-ndp__code {
+  font-family: var(--vscode-editor-font-family, "Courier New", monospace);
+  font-size: 11px;
+  color: var(--rf-text);
+  white-space: pre;
+}
+
+/* highlight.js token colors scoped to the panel */
+.rf-ndp__code .hljs-keyword  { color: #569cd6; }
+.rf-ndp__code .hljs-string   { color: #ce9178; }
+.rf-ndp__code .hljs-comment  { color: #6a9955; font-style: italic; }
+.rf-ndp__code .hljs-number   { color: #b5cea8; }
+.rf-ndp__code .hljs-built_in { color: #dcdcaa; }
+.rf-ndp__code .hljs-title    { color: #dcdcaa; }
+.rf-ndp__code .hljs-params   { color: #9cdcfe; }
+.rf-ndp__code .hljs-type     { color: #4ec9b0; }
+.rf-ndp__code .hljs-attr     { color: #9cdcfe; }
+.rf-ndp__code .hljs-literal  { color: #569cd6; }
+
+body.vscode-light .rf-ndp__code .hljs-keyword  { color: #0000ff; }
+body.vscode-light .rf-ndp__code .hljs-string   { color: #a31515; }
+body.vscode-light .rf-ndp__code .hljs-comment  { color: #008000; }
+body.vscode-light .rf-ndp__code .hljs-number   { color: #09885a; }
+body.vscode-light .rf-ndp__code .hljs-built_in { color: #795e26; }
+body.vscode-light .rf-ndp__code .hljs-title    { color: #795e26; }
+
+.rf-ndp__no-snippet {
+  color: var(--rf-text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+/* Explanation text */
+.rf-ndp__explanation {
+  margin: 0;
+  line-height: 1.6;
+  color: var(--rf-text);
+}
+
+.rf-ndp__muted {
+  margin: 0;
+  color: var(--rf-text-muted);
+  font-style: italic;
+}
+
+/* Commit block */
+.rf-ndp__commit {
+  padding: 10px 12px 0;
+}
+
+.rf-ndp__commit-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.rf-ndp__commit-field-label {
+  min-width: 50px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rf-text-muted);
+  flex-shrink: 0;
+}
+
+.rf-ndp__commit-value {
+  color: var(--rf-text);
+  word-break: break-word;
+}
+
+.rf-ndp__commit-message {
+  font-style: italic;
+}
+
+/* Clickable commit hash */
+.rf-ndp__commit-hash {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.rf-ndp__commit-hash:hover { text-decoration: underline; }
+
+/* Collapsible diff */
+.rf-ndp__diff-details {
+  margin-top: 8px;
+}
+
+.rf-ndp__diff-summary {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  padding: 2px 0;
+}
+.rf-ndp__diff-summary::-webkit-details-marker { display: none; }
+.rf-ndp__diff-summary::before { content: "▶  "; font-size: 8px; }
+.rf-ndp__diff-details[open] .rf-ndp__diff-summary::before { content: "▼  "; }
+
+.rf-ndp__diff-pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--rf-border);
+  border-radius: 3px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.rf-ndp__diff-code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10.5px;
+  white-space: pre;
+}
+
+.rf-ndp__diff-line { display: block; color: var(--rf-text); }
+.rf-ndp__diff-line--add { color: #4ec975; background: rgba(78,201,117,0.08); }
+.rf-ndp__diff-line--del { color: #f14c4c; background: rgba(241,76,76,0.08); }
+.rf-ndp__diff-line--hunk { color: var(--rf-text-muted); }

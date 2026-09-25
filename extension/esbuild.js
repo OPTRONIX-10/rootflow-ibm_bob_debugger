@@ -39,6 +39,9 @@ const webviewConfig = {
   alias: {
     "shared/schema": path.resolve(__dirname, "../shared/schema.ts"),
   },
+  // Bundle CSS files referenced via import statements.
+  // esbuild emits a companion dist/webview.css that the Webview HTML loads.
+  loader: { ".css": "css" },
 };
 
 async function build() {

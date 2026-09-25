@@ -266,7 +266,7 @@ Snippets are extracted by the `SnippetExtractor` class (built in this sub-task, 
 
 ### Sub-Task 6 — Webview: Metro-Style Visualization (D3 + SVG)
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 **Intent:**
 Build the core visual component of the Webview — an interactive 2D metro-style graph rendered with D3.js and SVG that represents the bug's propagation path, distinguishing causal nodes (origin, propagation, failure) from related context nodes.
@@ -297,7 +297,7 @@ Build the core visual component of the Webview — an interactive 2D metro-style
 
 ### Sub-Task 7 — Webview: Node Interaction & Code Inspection Panel
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 **Intent:**
 Enable full node interactivity in the visualization: clicking a node opens a detail panel showing the relevant code snippet at the exact file/line, the explanation/evidence, and the Git commit information — all without leaving the Webview.
