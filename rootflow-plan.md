@@ -384,7 +384,7 @@ Compose all Webview components into a cohesive single-page app shell, wire the m
 
 ### Sub-Task 10 — Integration, End-to-End Testing & Documentation
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 **Intent:**
 Validate the full RootFlow pipeline end-to-end with a real fixture, write the developer-facing documentation, and ensure the extension can be packaged and installed.

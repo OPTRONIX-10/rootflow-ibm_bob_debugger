@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: ["master", "main"]
+  pull_request:
+    branches: ["master", "main"]
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Python backend — unit + integration tests
+  # --------------------------------------------------------------------------
+  backend:
+    name: Backend Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run unit tests (excluding E2E)
+        run: |
+          python -m pytest backend/tests/ \
+            --ignore=backend/tests/test_e2e.py \
+            -v --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Run E2E tests
+        run: |
+          python -m pytest backend/tests/test_e2e.py \
+            -v --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          # E2E tests spin up the server internally; no real watsonx credentials
+          # are needed — the pipeline gracefully falls back when unavailable.
+          WATSONX_API_KEY: ""
+          WATSONX_PROJECT_ID: ""
+          WATSONX_URL: ""
+          WATSONX_MODEL_ID: ""
+
+  # --------------------------------------------------------------------------
+  # Buggy example project — confirm the fixture test actually fails
+  # --------------------------------------------------------------------------
+  fixture-fails:
+    name: Fixture Test Fails (expected)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies (for tree-sitter transitively)
+        run: pip install -r backend/requirements.txt
+
+      - name: Confirm buggy test fails with ZeroDivisionError
+        # We EXPECT this step to fail — invert exit code with `!`
+        run: |
+          ! python -m pytest examples/buggy_project/tests/test_report.py::TestGenerateReport::test_empty_dataset_zero_total -v
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Confirm non-buggy test passes
+        run: |
+          python -m pytest examples/buggy_project/tests/test_report.py::TestGenerateReport::test_normal_case -v
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  # --------------------------------------------------------------------------
+  # VS Code extension — build check
+  # --------------------------------------------------------------------------
+  extension:
+    name: Extension Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: extension
+
+      - name: Build extension bundle
+        run: npm run build
+        working-directory: extension
+
+      - name: Verify dist artefacts exist
+        run: |
+          test -f extension/dist/extension.js
+          test -f extension/dist/webview.js
+        shell: bash

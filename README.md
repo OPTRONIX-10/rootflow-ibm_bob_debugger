@@ -168,17 +168,118 @@ Backend Analysis Server  localhost:7331  (Python + FastAPI)
 
 ---
 
+## Example Project (Fixture)
+
+`examples/buggy_project/` is a minimal four-file Python project used as the canonical integration test fixture.
+
+```
+examples/buggy_project/
+├── utils.py          # contains the known ZeroDivisionError bug in `percentage()`
+├── stats.py          # calls utils.percentage via compute_ratio / summarise
+├── report.py         # top-level entry point that calls stats.summarise
+└── tests/
+    └── test_report.py  # pytest test — test_empty_dataset_zero_total FAILS (intentionally)
+```
+
+Run the failing test to see the bug:
+
+```bash
+python -m pytest examples/buggy_project/tests/test_report.py -v
+```
+
+---
+
+## Testing
+
+### Backend unit tests
+
+```bash
+cd <repo root>
+python -m pytest backend/tests/ --ignore=backend/tests/test_e2e.py -v
+```
+
+### End-to-end test
+
+The E2E test starts the server automatically and posts the fixture traceback:
+
+```bash
+python -m pytest backend/tests/test_e2e.py -v
+```
+
+> The test skips cleanly if the server fails to start. When `WATSONX_*`
+> credentials are absent the LLM stage falls back gracefully and the
+> structural assertions still pass.
+
+---
+
+## Packaging the Extension
+
+Prerequisites: [vsce](https://github.com/microsoft/vscode-vsce) (`npm install -g @vscode/vsce`)
+
+```bash
+cd extension
+npm run build          # compile TypeScript + Webview bundle
+vsce package           # produces rootflow-0.1.0.vsix
+```
+
+Install the `.vsix` in VS Code:
+
+```
+Extensions → … → Install from VSIX…
+```
+
+---
+
+## Troubleshooting
+
+### "RootFlow backend server failed to start"
+
+1. Confirm the Python virtual environment is active and `pip install -r backend/requirements.txt` has been run.
+2. Check that port `7331` is not already in use: `netstat -an | grep 7331`.
+3. Set `rootflow.pythonPath` in VS Code settings to the full path of your Python interpreter.
+4. Start the server manually (`python main.py` inside `backend/`) and check its console output for errors.
+
+### "LLM unavailable" explanation in the Webview
+
+The watsonx.ai credentials in `backend/.env` are missing or incorrect.  Copy `.env.example` to `.env` and fill in all four `WATSONX_*` variables.  The structural analysis (call graph + propagation path) still works without credentials.
+
+### Extension Webview shows blank panel
+
+Run `npm run build` inside `extension/` to ensure the Webview bundle (`dist/webview.js`) is up to date, then reload the Extension Development Host window (`Ctrl+R`).
+
+### `tree-sitter` import error on Python 3.12+
+
+Upgrade `tree-sitter` and `tree-sitter-python` to their latest releases:
+
+```bash
+pip install --upgrade tree-sitter tree-sitter-python
+```
+
+---
+
+## CI
+
+A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push and pull request:
+
+| Job | What it does |
+|---|---|
+| **backend** | Runs `pytest backend/tests/` (unit tests) and the E2E test on Python 3.11 and 3.12 |
+| **fixture-fails** | Confirms the example buggy test raises `ZeroDivisionError` as expected |
+| **extension** | Runs `npm run build` and asserts the compiled bundles exist |
+
+---
+
 ## Sub-Task Status
 
 | # | Sub-Task | Status |
 |---|---|---|
 | 1 | Project Scaffolding | ✅ Complete |
-| 2 | Extension: Input Capture & Server Bridge | ⬜ Pending |
-| 3 | Backend: AST & Call-Graph Analysis | ⬜ Pending |
-| 4 | Backend: Git Blame & Commit Identification | ⬜ Pending |
-| 5 | Backend: LLM Reasoning (watsonx.ai) | ⬜ Pending |
-| 6 | Webview: Metro-Style Visualization | ⬜ Pending |
-| 7 | Webview: Node Interaction & Code Inspection | ⬜ Pending |
-| 8 | Webview: Fix Panel & One-Click Apply | ⬜ Pending |
-| 9 | Webview: App Shell & Theme Integration | ⬜ Pending |
-| 10 | Integration, E2E Testing & Documentation | ⬜ Pending |
+| 2 | Extension: Input Capture & Server Bridge | ✅ Complete |
+| 3 | Backend: AST & Call-Graph Analysis | ✅ Complete |
+| 4 | Backend: Git Blame & Commit Identification | ✅ Complete |
+| 5 | Backend: LLM Reasoning (watsonx.ai) | ✅ Complete |
+| 6 | Webview: Metro-Style Visualization | ✅ Complete |
+| 7 | Webview: Node Interaction & Code Inspection | ✅ Complete |
+| 8 | Webview: Fix Panel & One-Click Apply | ✅ Complete |
+| 9 | Webview: App Shell & Theme Integration | ✅ Complete |
+| 10 | Integration, E2E Testing & Documentation | ✅ Complete |

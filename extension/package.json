@@ -57,6 +57,11 @@
       }
     }
   },
+  "files": [
+    "dist/**",
+    "package.json",
+    "README.md"
+  ],
   "scripts": {
     "build": "node esbuild.js",
     "watch": "node esbuild.js --watch",
