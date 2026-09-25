@@ -354,7 +354,7 @@ Surface the LLM-suggested fix in a dedicated panel within the Webview, show a be
 
 ### Sub-Task 9 — Webview: App Shell, Panel Layout & VS Code Theme Integration
 
-**Status:** `[ ] pending`
+**Status:** `[x] complete`
 
 **Intent:**
 Compose all Webview components into a cohesive single-page app shell, wire the message protocol between the extension host and the Webview, apply VS Code theme variables throughout, and ensure the layout is polished and production-ready.
