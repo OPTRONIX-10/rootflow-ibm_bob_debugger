@@ -426,7 +426,6 @@ async function applyFix(
           return;
         }
       }
-    }
 
       // A compact fallback patch may contain only the changed expression
       // rather than the complete source line. Replace that expression in
@@ -452,6 +451,7 @@ async function applyFix(
           }
         }
       }
+    }
 
     // ── Strategy 2: exact text match ─────────────────────────────────────────
     const docText = docLines.join("\n");
