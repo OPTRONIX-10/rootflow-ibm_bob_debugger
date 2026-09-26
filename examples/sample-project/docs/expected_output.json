@@ -1,0 +1,74 @@
+{
+  "failure": {
+    "node_id": "app.py",
+    "file": "app.py",
+    "line": 5,
+    "function": "handle_signup",
+    "error": "KeyError: 'email'"
+  },
+  "nodes": [
+    {
+      "id": "models/user_schema.py",
+      "file": "models/user_schema.py",
+      "lines": "1-3",
+      "role": "root_cause",
+      "investigated": true
+    },
+    {
+      "id": "routes/auth.py",
+      "file": "routes/auth.py",
+      "line": 8,
+      "function": "create_user",
+      "role": "carrier",
+      "investigated": true
+    },
+    {
+      "id": "app.py",
+      "file": "app.py",
+      "line": 5,
+      "function": "handle_signup",
+      "role": "failure",
+      "investigated": true
+    },
+    {
+      "id": "utils/token_service.py",
+      "file": "utils/token_service.py",
+      "role": "unaffected",
+      "investigated": true,
+      "ruled_out_reason": "recently modified but touches token expiry only; no dependency on user validation or auth"
+    },
+    {
+      "id": "receipt.py",
+      "file": "receipt.py",
+      "role": "unaffected",
+      "investigated": true,
+      "ruled_out_reason": "no import or call relationship with the failing path"
+    }
+  ],
+  "propagation": [
+    {
+      "from": "models/user_schema.py",
+      "to": "routes/auth.py",
+      "reason": "Schema now requires 'email_address'; routes/auth.py still reads the old 'email' key"
+    },
+    {
+      "from": "routes/auth.py",
+      "to": "app.py",
+      "reason": "KeyError raised while building the response dict, surfaces at the call site in handle_signup"
+    }
+  ],
+  "root_cause": {
+    "node_id": "models/user_schema.py",
+    "commit": "90a0779",
+    "commit_message": "refactor: user validation schema",
+    "author": "Afra Dev",
+    "date": "2 days before README commit",
+    "confidence": 0.92
+  },
+  "suggested_fix": {
+    "file": "routes/auth.py",
+    "line": 8,
+    "before": "\"email\": validated[\"email\"],",
+    "after": "\"email\": validated[\"email_address\"],"
+  }
+}
