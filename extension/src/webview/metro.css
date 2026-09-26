@@ -47,9 +47,10 @@ body.vscode-high-contrast {
   background: var(--rf-surface);
   border: 1px solid var(--rf-border);
   border-radius: 4px;
-  overflow: hidden;
+  /* overflow: visible so the SVG canvas (which can be taller than the container)
+     scrolls naturally within .rf-graph-area rather than being clipped. */
+  overflow: visible;
   width: 100%;
-  height: 100%;
   min-height: 260px;
   box-sizing: border-box;
 }
@@ -128,14 +129,17 @@ body.vscode-high-contrast {
  * The panel slides in on the right side of the main content row.
  * Width is fixed; the graph area takes the remaining space via flex-shrink.
  */
+/* NodeDetailPanel now lives inside .rf-side-panel__detail — it should fill
+   all available space rather than use a fixed width.  The fixed-width and
+   border-left are handled by the parent .rf-side-panel container. */
 .rf-ndp {
-  width: 320px;
-  min-width: 260px;
-  max-width: 400px;
-  flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--rf-border);
+  border-top: 1px solid var(--rf-border);
   background: var(--vscode-sideBar-background, #252526);
   overflow: hidden;
   font-family: var(--vscode-font-family, sans-serif);
@@ -373,15 +377,11 @@ body.vscode-light .rf-ndp__code .hljs-title    { color: #795e26; }
 /* ── Fix Panel ───────────────────────────────────────────────────────────── */
 
 /*
- * The fix panel sits at the bottom of the .rf-shell column as a collapsible
- * bottom sheet.  It has a fixed max-height with internal scroll so it never
- * pushes the metro graph off screen on small panels.
+ * The fix panel now lives inside .rf-side-panel__fix as the first sub-panel.
+ * It fills the width of the side panel and scrolls internally.
  */
 .rf-fix {
-  flex-shrink: 0;
-  max-height: 280px;
-  overflow-y: auto;
-  border-top: 2px solid var(--vscode-focusBorder, #007acc);
+  width: 100%;
   background: var(--vscode-sideBar-background, #252526);
   font-family: var(--vscode-font-family, sans-serif);
   font-size: 12px;
@@ -533,3 +533,98 @@ body.vscode-light .rf-diff__line--del  { color: #b91c1c; background: rgba(185,28
 body.vscode-light .rf-fix__badge--high   { background: rgba(26,115,64,0.15);  color: #1a7340; }
 body.vscode-light .rf-fix__badge--medium { background: rgba(160,120,0,0.15);  color: #a07800; }
 body.vscode-light .rf-fix__badge--low    { background: rgba(185,28,28,0.15);  color: #b91c1c; }
+
+/* ── FixPanel commit block ─────────────────────────────────────────────────── */
+
+.rf-fix__commit {
+  margin: 6px 14px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rf-border);
+  border-radius: 3px;
+  background: var(--vscode-editor-background, #1e1e1e);
+}
+
+.rf-fix__commit-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rf-text-muted);
+  margin-bottom: 5px;
+}
+
+.rf-fix__commit-meta {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.rf-fix__commit-label {
+  min-width: 50px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rf-text-muted);
+  flex-shrink: 0;
+}
+
+.rf-fix__commit-value {
+  color: var(--rf-text);
+  word-break: break-word;
+}
+
+.rf-fix__commit-message {
+  font-style: italic;
+}
+
+.rf-fix__commit-hash {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+.rf-fix__commit-hash:hover { text-decoration: underline; }
+
+.rf-fix__commit-diff-details {
+  margin-top: 6px;
+}
+
+.rf-fix__commit-diff-summary {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-textLink-foreground, #4c9be8);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  padding: 2px 0;
+}
+.rf-fix__commit-diff-summary::-webkit-details-marker { display: none; }
+.rf-fix__commit-diff-summary::before { content: "▶  "; font-size: 8px; }
+.rf-fix__commit-diff-details[open] .rf-fix__commit-diff-summary::before { content: "▼  "; }
+
+.rf-fix__commit-diff-pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: 1px solid var(--rf-border);
+  border-radius: 3px;
+  overflow-x: auto;
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.rf-fix__commit-diff-code {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 10.5px;
+  white-space: pre;
+}

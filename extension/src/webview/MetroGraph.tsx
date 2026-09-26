@@ -122,6 +122,13 @@ const MetroGraph: React.FC<MetroGraphProps> = ({
     );
   }
 
+  // Build spine track: a background line connecting all spine (non-related) nodes
+  const spineNodes = layout.nodes.filter((n) => n.role !== "related");
+  const spineY = spineNodes.length > 0 ? spineNodes[0].y : 200;
+  const spineXs = spineNodes.map((n) => n.x).sort((a, b) => a - b);
+  const spineTrackX1 = spineXs.length > 0 ? spineXs[0] : 0;
+  const spineTrackX2 = spineXs.length > 0 ? spineXs[spineXs.length - 1] : 0;
+
   return (
     <div className="metro-graph">
       {/* Legend */}
@@ -141,7 +148,21 @@ const MetroGraph: React.FC<MetroGraphProps> = ({
         role="img"
       >
         <g ref={gRef} className="metro-graph__scene">
-          {/* Lines below nodes */}
+          {/* Spine background track — a thick muted line behind the main stations */}
+          {spineXs.length > 1 && (
+            <line
+              x1={spineTrackX1}
+              y1={spineY}
+              x2={spineTrackX2}
+              y2={spineY}
+              stroke="var(--rf-color-spine-track, #4c9be8)"
+              strokeWidth={6}
+              strokeLinecap="round"
+              opacity={0.25}
+            />
+          )}
+
+          {/* Causal-path lines (coloured by role) */}
           <MetroLine edges={edges} nodeMap={nodeMap} />
 
           {/* Station nodes */}

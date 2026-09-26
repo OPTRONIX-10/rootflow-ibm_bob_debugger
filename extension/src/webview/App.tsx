@@ -1,24 +1,22 @@
 /**
- * App.tsx — Root application component for the RootFlow Webview (Sub-Task 9)
+ * App.tsx — Root application component for the RootFlow Webview
  *
- * Responsibilities:
- *  - Holds all top-level React state: result, loading, error, selectedNode.
- *  - Listens for messages from the extension host via window.addEventListener.
- *  - Renders the header bar, MetroGraph (center), NodeDetailPanel (right
- *    drawer), FixPanel (bottom sheet), LoadingSkeleton, ErrorState, and Tooltip.
- *  - Posts messages back to the extension host for openFile, openDiff,
- *    applyFix, and retry actions.
- *
- * Message protocol (extension host → webview):
- *   { command: 'loadResult', data: RootFlowResult }
- *   { command: 'loading' }
- *   { command: 'error', message: string }
- *
- * Message protocol (webview → extension host):
- *   { command: 'openFile', file: string, line: number }
- *   { command: 'openDiff', hash: string }
- *   { command: 'applyFix', filePath: string, originalCode: string, fixedCode: string, patch: string }
- *   { command: 'retry' }
+ * Layout (redesigned):
+ *   ┌──────────────────────────────────────────────────────┐
+ *   │  Header bar                                          │
+ *   ├──────────────────────┬───────────────────────────────┤
+ *   │                      │  Side panel                   │
+ *   │  Metro Graph         │  ┌──────────────────────────┐ │
+ *   │  (main area, flex:1) │  │  FixPanel (always shown, │ │
+ *   │                      │  │  non-dismissable)         │ │
+ *   │                      │  │  + commit history         │ │
+ *   │                      │  └──────────────────────────┘ │
+ *   │                      │  ┌──────────────────────────┐ │
+ *   │                      │  │  NodeDetailPanel          │ │
+ *   │                      │  │  (slides in when node     │ │
+ *   │                      │  │   is selected)            │ │
+ *   │                      │  └──────────────────────────┘ │
+ *   └──────────────────────┴───────────────────────────────┘
  */
 
 import React, { useState, useEffect } from "react";
@@ -42,14 +40,11 @@ const vscodeApi = (function () {
   try {
     return acquireVsCodeApi();
   } catch {
-    // Running outside VS Code (e.g. browser dev) — no-op stub
     return { postMessage: () => {}, getState: () => null, setState: () => {} };
   }
 })();
 
 // ─── Inline shell styles ──────────────────────────────────────────────────────
-// Injected once into <head> by index.tsx so that the shell CSS is available
-// before any component renders.  Exported for use by the entry point.
 
 export const SHELL_STYLES = `
   * { box-sizing: border-box; }
@@ -93,18 +88,57 @@ export const SHELL_STYLES = `
     font-size: 11px;
     color: var(--vscode-descriptionForeground, #888);
   }
-  /* Content row: graph + side panel */
+
+  /* ── Main content row: graph (left) + side panel (right) ── */
   .rf-content {
     display: flex;
     flex: 1;
     overflow: hidden;
   }
+
+  /* Graph fills remaining horizontal space */
   .rf-graph-area {
     flex: 1;
     overflow: auto;
     padding: 8px;
     min-width: 0;
   }
+
+  /* ── Right side panel ──────────────────────────────────── */
+  /*
+   * Fixed-width panel on the right that always shows the FixPanel
+   * and, when a node is selected, also shows the NodeDetailPanel
+   * below it.  Uses flex-column + internal scroll so neither sub-
+   * panel pushes the other off screen.
+   */
+  .rf-side-panel {
+    width: 340px;
+    min-width: 280px;
+    max-width: 420px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--vscode-panel-border, #3c3c3c);
+    background: var(--vscode-sideBar-background, #252526);
+    overflow: hidden;
+  }
+
+  /* FixPanel sub-area — takes only as much space as it needs, scrolls if tall */
+  .rf-side-panel__fix {
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 55%;
+    border-bottom: 1px solid var(--vscode-panel-border, #3c3c3c);
+  }
+
+  /* NodeDetailPanel sub-area — fills remaining space below fix panel */
+  .rf-side-panel__detail {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
   .rf-button {
     background: var(--vscode-button-background, #0e639c);
     color: var(--vscode-button-foreground, #fff);
@@ -115,6 +149,7 @@ export const SHELL_STYLES = `
     font-size: 12px;
   }
   .rf-button:hover { opacity: 0.9; }
+
   .rf-tooltip {
     position: fixed;
     z-index: 1000;
@@ -164,14 +199,13 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [fixDismissed, setFixDismissed] = useState<boolean>(false);
   const [tooltip, setTooltip] = useState<{
     node: GraphNode;
     x: number;
     y: number;
   } | null>(null);
 
-  // ── Message listener (extension host → webview) ───────────────────────────
+  // ── Message listener ───────────────────────────────────────────────────────
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       const msg = event.data as {
@@ -184,7 +218,6 @@ const App: React.FC = () => {
           setLoading(false);
           setError(null);
           setSelectedNode(null);
-          setFixDismissed(false);
           setResult(msg.data ?? null);
           break;
         case "loading":
@@ -209,14 +242,11 @@ const App: React.FC = () => {
   }
 
   function handleNodeHover(node: GraphNode | null, event?: React.MouseEvent) {
-    if (!node) {
-      setTooltip(null);
-      return;
-    }
+    if (!node) { setTooltip(null); return; }
     setTooltip({ node, x: event?.clientX ?? 0, y: event?.clientY ?? 0 });
   }
 
-  // ── Extension host messaging (webview → extension) ─────────────────────────
+  // ── Extension host messaging ───────────────────────────────────────────────
   function handleOpenFile(file: string, line: number) {
     vscodeApi.postMessage({ command: "openFile", file, line });
   }
@@ -300,15 +330,18 @@ const App: React.FC = () => {
     ? result.propagationPath.find((p) => p.id === selectedNode.id) ?? null
     : null;
 
-  const commitInfo =
-    selectedNode?.role === "origin"
-      ? (result.rootCause.introducedByCommit ?? null)
-      : null;
+  // Commit info is always sourced from rootCause (shown at bottom of FixPanel)
+  const commitInfo = result.rootCause.introducedByCommit ?? null;
 
-  const showFix =
-    !fixDismissed &&
+  // NodeDetailPanel for a clicked node — always passes null for commitInfo since
+  // it's shown in the FixPanel instead
+  const showFix = !!(
     result.suggestedFix &&
-    (result.suggestedFix.patch || result.suggestedFix.description);
+    (result.suggestedFix.patch || result.suggestedFix.description)
+  );
+
+  // Whether to show the right side panel at all
+  const showSidePanel = showFix || selectedNode !== null;
 
   // ── Main result layout ─────────────────────────────────────────────────────
   return (
@@ -331,9 +364,9 @@ const App: React.FC = () => {
         </span>
       </div>
 
-      {/* Main content area: graph + optional detail panel */}
+      {/* Main content: graph on the left, side panel on the right */}
       <div className="rf-content">
-        {/* Graph */}
+        {/* Metro map — always fills available space */}
         <div className="rf-graph-area">
           <MetroGraph
             nodes={result.graph.nodes}
@@ -345,28 +378,40 @@ const App: React.FC = () => {
           />
         </div>
 
-        {/* Node detail panel — slide in when a node is selected */}
-        {selectedNode && (
-          <NodeDetailPanel
-            node={selectedNode}
-            propagationNode={selectedPropNode}
-            commitInfo={commitInfo}
-            onOpenFile={handleOpenFile}
-            onOpenDiff={handleOpenDiff}
-            onClose={() => setSelectedNode(null)}
-          />
+        {/* Right side panel — contains FixPanel (always) + NodeDetailPanel
+            (when a node is selected). Both are sub-panels; the map is never
+            replaced or hidden. */}
+        {showSidePanel && (
+          <div className="rf-side-panel">
+            {/* FixPanel: always visible when a fix exists, non-dismissable.
+                Commit history from rootCause.introducedByCommit is always
+                shown at the bottom of this panel. */}
+            {showFix && (
+              <div className="rf-side-panel__fix">
+                <FixPanel
+                  fix={result.suggestedFix}
+                  confidenceScore={result.rootCause.confidenceScore ?? 0}
+                  commitInfo={commitInfo}
+                  onApply={handleApplyFix}
+                  onOpenDiff={handleOpenDiff}
+                />
+              </div>
+            )}
+
+            {/* NodeDetailPanel: slide in when a node is clicked */}
+            {selectedNode && (
+              <div className="rf-side-panel__detail">
+                <NodeDetailPanel
+                  node={selectedNode}
+                  propagationNode={selectedPropNode}
+                  onOpenFile={handleOpenFile}
+                  onClose={() => setSelectedNode(null)}
+                />
+              </div>
+            )}
+          </div>
         )}
       </div>
-
-      {/* Fix panel — bottom sheet, always visible when a fix is present */}
-      {showFix && (
-        <FixPanel
-          fix={result.suggestedFix}
-          confidenceScore={result.rootCause.confidenceScore ?? 0}
-          onApply={handleApplyFix}
-          onDismiss={() => setFixDismissed(true)}
-        />
-      )}
 
       {/* Hover tooltip */}
       {tooltip && (

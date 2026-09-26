@@ -1,22 +1,19 @@
 /**
  * FixPanel.tsx
  *
- * Bottom-sheet panel that surfaces the LLM-suggested fix for the analyzed bug.
+ * Side-panel section that surfaces the LLM-suggested fix.
  *
- * Always rendered when `suggestedFix` is present and the panel has not been
- * dismissed.  Shows:
- *   - Confidence score badge (from rootCause.confidenceScore)
+ * Always rendered when `suggestedFix` is present (non-dismissable).
+ * Shows:
+ *   - Confidence score badge
  *   - Fix description text
- *   - DiffView: syntax-coloured unified diff of originalCode → fixedCode
- *   - "Apply Fix" button → posts { command: 'applyFix', filePath, originalCode, fixedCode, patch }
- *   - "Dismiss" button → hides the panel without modifying the file
- *
- * The panel is purely presentational; the parent (App / index.tsx) supplies
- * the `onApply` and `onDismiss` callbacks.
+ *   - DiffView: syntax-coloured unified diff
+ *   - "Apply Fix" button
+ *   - Introducing commit block at the bottom (always shown when available)
  */
 
 import React from "react";
-import type { SuggestedFix } from "shared/schema";
+import type { SuggestedFix, CommitInfo } from "shared/schema";
 import DiffView from "./DiffView";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,22 +22,22 @@ export interface FixPanelProps {
   fix: SuggestedFix;
   /** 0.0 – 1.0 confidence from rootCause */
   confidenceScore: number;
+  /** Commit that introduced the bug (always shown at bottom, regardless of selected node) */
+  commitInfo: CommitInfo | null;
   /** Called when the user clicks "Apply Fix" */
   onApply: (fix: SuggestedFix) => void;
-  /** Called when the user clicks "Dismiss" */
-  onDismiss: () => void;
+  /** Called when the user clicks a commit hash */
+  onOpenDiff: (hash: string) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Maps a 0–1 confidence score to a CSS modifier class. */
 function confidenceClass(score: number): string {
   if (score >= 0.75) return "rf-fix__badge--high";
   if (score >= 0.45) return "rf-fix__badge--medium";
   return "rf-fix__badge--low";
 }
 
-/** Formats a 0–1 confidence score as a percentage string. */
 function confidenceLabel(score: number): string {
   return `${Math.round(score * 100)}% confidence`;
 }
@@ -50,8 +47,9 @@ function confidenceLabel(score: number): string {
 const FixPanel: React.FC<FixPanelProps> = ({
   fix,
   confidenceScore,
+  commitInfo,
   onApply,
-  onDismiss,
+  onOpenDiff,
 }) => {
   return (
     <section className="rf-fix" aria-label="Suggested fix">
@@ -68,13 +66,6 @@ const FixPanel: React.FC<FixPanelProps> = ({
             title="Apply the suggested patch to the workspace file"
           >
             Apply Fix
-          </button>
-          <button
-            className="rf-button rf-button--secondary rf-fix__dismiss-btn"
-            onClick={onDismiss}
-            title="Dismiss this suggestion without applying"
-          >
-            Dismiss
           </button>
         </div>
       </div>
@@ -95,6 +86,58 @@ const FixPanel: React.FC<FixPanelProps> = ({
         <div className="rf-fix__diff-label">Patch</div>
         <DiffView patch={fix.patch} />
       </div>
+
+      {/* ── Introducing commit (always shown at bottom when available) ───── */}
+      {commitInfo && (
+        <div className="rf-fix__commit">
+          <div className="rf-fix__commit-title">Bug-Introducing Commit</div>
+          <div className="rf-fix__commit-meta">
+            <span className="rf-fix__commit-label">Hash</span>
+            <button
+              className="rf-fix__commit-hash"
+              onClick={() => onOpenDiff(commitInfo.hash)}
+              title="Open diff in Source Control"
+            >
+              {commitInfo.hash.slice(0, 8)}
+            </button>
+          </div>
+          <div className="rf-fix__commit-meta">
+            <span className="rf-fix__commit-label">Author</span>
+            <span className="rf-fix__commit-value">{commitInfo.author}</span>
+          </div>
+          <div className="rf-fix__commit-meta">
+            <span className="rf-fix__commit-label">Date</span>
+            <span className="rf-fix__commit-value">{commitInfo.date}</span>
+          </div>
+          <div className="rf-fix__commit-meta">
+            <span className="rf-fix__commit-label">Message</span>
+            <span className="rf-fix__commit-value rf-fix__commit-message">
+              {commitInfo.message}
+            </span>
+          </div>
+          {commitInfo.diff && (
+            <details className="rf-fix__commit-diff-details">
+              <summary className="rf-fix__commit-diff-summary">Show diff</summary>
+              <pre className="rf-fix__commit-diff-pre">
+                <code className="rf-fix__commit-diff-code">
+                  {commitInfo.diff.split("\n").map((line, i) => {
+                    let cls = "rf-ndp__diff-line";
+                    if (line.startsWith("+") && !line.startsWith("+++")) cls += " rf-ndp__diff-line--add";
+                    else if (line.startsWith("-") && !line.startsWith("---")) cls += " rf-ndp__diff-line--del";
+                    else if (line.startsWith("@@")) cls += " rf-ndp__diff-line--hunk";
+                    return (
+                      <span key={i} className={cls}>
+                        {line}
+                        {"\n"}
+                      </span>
+                    );
+                  })}
+                </code>
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
     </section>
   );
 };

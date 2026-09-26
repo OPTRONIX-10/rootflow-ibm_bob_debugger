@@ -350,17 +350,69 @@ async function applyFix(
     const doc = await vscode.workspace.openTextDocument(uri);
     const docText = doc.getText();
 
-    const startOffset = docText.indexOf(originalCode);
+    // First try an exact match, then fall back to a whitespace-normalised search
+    // so that minor formatting differences (trailing spaces, CRLF vs LF, etc.)
+    // do not cause spurious "could not locate" errors.
+    let startOffset = docText.indexOf(originalCode);
+    let matchLength = originalCode.length;
+
     if (startOffset === -1) {
-      vscode.window.showErrorMessage(
-        "RootFlow: Could not locate the original code in the file. " +
-          "The file may have been modified since analysis."
-      );
-      return;
+      // Normalise both sides: collapse runs of whitespace to a single space
+      const normalise = (s: string) =>
+        s.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+      const normOriginal = normalise(originalCode);
+      const normDoc = normalise(docText);
+
+      const normOffset = normDoc.indexOf(normOriginal);
+      if (normOffset === -1) {
+        vscode.window.showErrorMessage(
+          "RootFlow: Could not locate the original code in the file. " +
+            "The file may have been modified since analysis."
+        );
+        return;
+      }
+
+      // Map the normalised offset back to a range in the real document by
+      // scanning the original text to skip the same number of non-whitespace
+      // characters that precede normOffset in normDoc.
+      // Simpler approach: locate via line-by-line matching of the first line.
+      const firstLine = originalCode
+        .replace(/\r\n/g, "\n")
+        .split("\n")
+        .find((l) => l.trim().length > 0)
+        ?.trim();
+      if (firstLine) {
+        // Find a line in the document that contains the first significant line
+        const lines = docText.split("\n");
+        for (let li = 0; li < lines.length; li++) {
+          if (lines[li].includes(firstLine)) {
+            // Compute byte offset of this line
+            const offset = lines.slice(0, li).join("\n").length + (li > 0 ? 1 : 0);
+            // Extend to cover the full originalCode block (by line count)
+            const origLines = originalCode.replace(/\r\n/g, "\n").split("\n");
+            const endLineIdx = li + origLines.length - 1;
+            const endLineOffset =
+              lines.slice(0, endLineIdx).join("\n").length +
+              (endLineIdx > 0 ? 1 : 0) +
+              lines[endLineIdx].length;
+            startOffset = offset;
+            matchLength = endLineOffset - offset;
+            break;
+          }
+        }
+      }
+
+      if (startOffset === -1) {
+        vscode.window.showErrorMessage(
+          "RootFlow: Could not locate the original code in the file. " +
+            "The file may have been modified since analysis."
+        );
+        return;
+      }
     }
 
     const startPos = doc.positionAt(startOffset);
-    const endPos = doc.positionAt(startOffset + originalCode.length);
+    const endPos = doc.positionAt(startOffset + matchLength);
     const range = new vscode.Range(startPos, endPos);
 
     const edit = new vscode.WorkspaceEdit();
