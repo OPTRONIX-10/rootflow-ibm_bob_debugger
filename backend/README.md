@@ -38,7 +38,7 @@ cp .env.example .env
 
 > **Note:** If `WATSONX_API_KEY` or `WATSONX_PROJECT_ID` are missing, the LLM
 > stage is skipped gracefully — the analysis result will still include the
-> call-graph trace and Git blame data, but `rootCause.explanation` will be
+> call-graph trace and related-code context, but `rootCause.explanation` will be
 > `"LLM unavailable"` and `confidenceScore` will be `0`.
 
 ## Pipeline Stages
@@ -46,5 +46,5 @@ cp .env.example .env
 | Stage | Module | Description |
 |---|---|---|
 | 3 | `analyzer/ast_analyzer.py`, `analyzer/call_graph.py`, `analyzer/propagation_tracer.py` | Parse AST, build call graph, trace propagation path |
-| 4 | `analyzer/git_analyzer.py` | Git blame — identify the introducing commit for the origin node |
+| 4 | Related-code context | Collect definitions from related workspace files for diagnosis |
 | 5 | `analyzer/snippet_extractor.py`, `analyzer/watsonx_reasoner.py` | Extract function snippets, call Granite LLM for root-cause explanation and fix |

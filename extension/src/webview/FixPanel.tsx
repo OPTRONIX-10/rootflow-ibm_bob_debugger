@@ -13,21 +13,18 @@
  */
 
 import React from "react";
-import type { SuggestedFix, CommitInfo } from "shared/schema";
+import type { SuggestedFix } from "shared/schema";
 import DiffView from "./DiffView";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface FixPanelProps {
   fix: SuggestedFix;
+  explanation: string;
   /** 0.0 – 1.0 confidence from rootCause */
   confidenceScore: number;
-  /** Commit that introduced the bug (always shown at bottom, regardless of selected node) */
-  commitInfo: CommitInfo | null;
   /** Called when the user clicks "Apply Fix" */
   onApply: (fix: SuggestedFix) => void;
-  /** Called when the user clicks a commit hash */
-  onOpenDiff: (hash: string) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -46,10 +43,9 @@ function confidenceLabel(score: number): string {
 
 const FixPanel: React.FC<FixPanelProps> = ({
   fix,
+  explanation,
   confidenceScore,
-  commitInfo,
   onApply,
-  onOpenDiff,
 }) => {
   return (
     <section className="rf-fix" aria-label="Suggested fix">
@@ -74,6 +70,9 @@ const FixPanel: React.FC<FixPanelProps> = ({
       {fix.description && (
         <p className="rf-fix__description">{fix.description}</p>
       )}
+      {explanation && !fix.description && (
+        <p className="rf-fix__description">{explanation}</p>
+      )}
 
       {/* ── File path ────────────────────────────────────────────────────── */}
       <div className="rf-fix__filepath">
@@ -87,57 +86,6 @@ const FixPanel: React.FC<FixPanelProps> = ({
         <DiffView patch={fix.patch} />
       </div>
 
-      {/* ── Introducing commit (always shown at bottom when available) ───── */}
-      {commitInfo && (
-        <div className="rf-fix__commit">
-          <div className="rf-fix__commit-title">Bug-Introducing Commit</div>
-          <div className="rf-fix__commit-meta">
-            <span className="rf-fix__commit-label">Hash</span>
-            <button
-              className="rf-fix__commit-hash"
-              onClick={() => onOpenDiff(commitInfo.hash)}
-              title="Open diff in Source Control"
-            >
-              {commitInfo.hash.slice(0, 8)}
-            </button>
-          </div>
-          <div className="rf-fix__commit-meta">
-            <span className="rf-fix__commit-label">Author</span>
-            <span className="rf-fix__commit-value">{commitInfo.author}</span>
-          </div>
-          <div className="rf-fix__commit-meta">
-            <span className="rf-fix__commit-label">Date</span>
-            <span className="rf-fix__commit-value">{commitInfo.date}</span>
-          </div>
-          <div className="rf-fix__commit-meta">
-            <span className="rf-fix__commit-label">Message</span>
-            <span className="rf-fix__commit-value rf-fix__commit-message">
-              {commitInfo.message}
-            </span>
-          </div>
-          {commitInfo.diff && (
-            <details className="rf-fix__commit-diff-details">
-              <summary className="rf-fix__commit-diff-summary">Show diff</summary>
-              <pre className="rf-fix__commit-diff-pre">
-                <code className="rf-fix__commit-diff-code">
-                  {commitInfo.diff.split("\n").map((line, i) => {
-                    let cls = "rf-ndp__diff-line";
-                    if (line.startsWith("+") && !line.startsWith("+++")) cls += " rf-ndp__diff-line--add";
-                    else if (line.startsWith("-") && !line.startsWith("---")) cls += " rf-ndp__diff-line--del";
-                    else if (line.startsWith("@@")) cls += " rf-ndp__diff-line--hunk";
-                    return (
-                      <span key={i} className={cls}>
-                        {line}
-                        {"\n"}
-                      </span>
-                    );
-                  })}
-                </code>
-              </pre>
-            </details>
-          )}
-        </div>
-      )}
     </section>
   );
 };

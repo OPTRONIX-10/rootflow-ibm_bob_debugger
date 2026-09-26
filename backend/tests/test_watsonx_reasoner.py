@@ -210,20 +210,20 @@ class TestWatsonxReasonerParseFallback:
     def test_empty_response_returns_parse_error(self) -> None:
         reasoner = self._make_reasoner_with_bad_response("")
         result = reasoner.reason("err", [])
-        assert result.explanation == "LLM parse error"
+        assert result.explanation.startswith("No remote fix was generated:")
         assert result.confidence_score == 0.0
 
     def test_non_json_response_returns_parse_error(self) -> None:
         reasoner = self._make_reasoner_with_bad_response("I cannot help with that.")
         result = reasoner.reason("err", [])
-        assert result.explanation == "LLM parse error"
+        assert result.explanation.startswith("No remote fix was generated:")
         assert result.llm_error is not None
 
     def test_missing_key_returns_parse_error(self) -> None:
         incomplete = {k: v for k, v in _VALID_LLM_RESPONSE.items() if k != "patch"}
         reasoner = self._make_reasoner_with_bad_response(json.dumps(incomplete))
         result = reasoner.reason("err", [])
-        assert result.explanation == "LLM parse error"
+        assert result.explanation.startswith("No remote fix was generated:")
 
     def test_generate_text_exception_returns_fallback(self) -> None:
         reasoner = WatsonxReasoner(api_key="key", project_id="proj")
@@ -271,18 +271,15 @@ class TestBuildUserMessage:
         msg = _build_user_message("TypeError: NoneType", "", [])
         assert "TypeError: NoneType" in msg
 
-    def test_git_summary_in_message(self) -> None:
-        msg = _build_user_message("err", "Commit abc123 by Alice", [])
-        assert "abc123" in msg
-
     def test_snippet_context_in_message(self) -> None:
         ctx = _make_snippet_ctx(code="def foo():\n    return 1")
         msg = _build_user_message("err", "", [ctx])
         assert "def foo()" in msg
 
-    def test_no_git_summary_skips_section(self) -> None:
-        msg = _build_user_message("err", "", [])
-        assert "Git Blame" not in msg
+    def test_fix_target_instruction_in_message(self) -> None:
+        msg = _build_user_message("err", [])
+        assert "FAILURE node" in msg
+        assert "ORIGIN node" in msg
 
     def test_node_role_in_message(self) -> None:
         ctx = _make_snippet_ctx(role="failure", symbol="broken_func")

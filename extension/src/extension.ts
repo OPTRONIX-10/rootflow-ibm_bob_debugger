@@ -8,7 +8,7 @@
  *  2. Ensure the Python backend is running via ServerManager.
  *  3. Send the error text to AnalysisClient and receive a RootFlowResult.
  *  4. Open / reveal the Webview panel and post the result to it.
- *  5. Handle messages posted back from the Webview (openFile, openDiff, applyFix, retry).
+ *  5. Handle messages posted back from the Webview (openFile, applyFix, retry).
  */
 
 import * as path from "path";
@@ -250,19 +250,6 @@ async function handleWebviewMessage(
       break;
     }
 
-    case "openDiff": {
-      const hash = message.hash as string;
-      vscode.commands
-        .executeCommand("git.showCommit", hash)
-        .then(undefined, () => {
-          vscode.window.showInformationMessage(
-            `RootFlow: Commit ${hash}. ` +
-              `Use the Source Control panel to inspect this commit.`
-          );
-        });
-      break;
-    }
-
     case "applyFix": {
       const filePath = message.filePath as string;
       const originalCode = message.originalCode as string;
@@ -352,29 +339,28 @@ function getOrCreateWebviewPanel(
  */
 function parsePatchHunk(patch: string): {
   startLine: number;
-  deleteCount: number;
-  insertLines: string[];
+  oldLines: string[];
+  newLines: string[];
 } | null {
   const lines = patch.replace(/\r\n/g, "\n").split("\n");
   // Find the first @@ hunk header, e.g. "@@ -8,7 +8,7 @@"
   for (const line of lines) {
-    const m = line.match(/^@@\s*-(\d+)(?:,\d+)?\s*\+(\d+)(?:,(\d+))?\s*@@/);
+    const m = line.match(/^@@\s*-(\d+)(?:,(\d+))?\s*\+(\d+)(?:,(\d+))?\s*@@/);
     if (m) {
       const oldStart = parseInt(m[1], 10) - 1; // convert to 0-based
       const hunkIdx = lines.indexOf(line);
       const hunkLines = lines.slice(hunkIdx + 1);
-      const deleteLines: string[] = [];
-      const insertLines: string[] = [];
+      const oldLines: string[] = [];
+      const newLines: string[] = [];
       for (const hl of hunkLines) {
         if (hl.startsWith("@@")) break; // next hunk
-        if (hl.startsWith("-")) deleteLines.push(hl.slice(1));
-        else if (hl.startsWith("+")) insertLines.push(hl.slice(1));
-        // context lines (space-prefixed) are skipped — we only need counts
+        if (hl.startsWith("-") || hl.startsWith(" ")) oldLines.push(hl.slice(1));
+        if (hl.startsWith(" ") || hl.startsWith("+")) newLines.push(hl.slice(1));
       }
       return {
         startLine: oldStart,
-        deleteCount: deleteLines.length,
-        insertLines,
+        oldLines,
+        newLines,
       };
     }
   }
@@ -390,7 +376,7 @@ async function applyFix(
   try {
     const uri = vscode.Uri.file(filePath);
     const doc = await vscode.workspace.openTextDocument(uri);
-    const docLines = doc.getText().split("\n");
+    const docLines = doc.getText().split(/\r?\n/);
 
     let range: vscode.Range;
     let replacement: string;
@@ -398,11 +384,29 @@ async function applyFix(
     // ── Strategy 1: parse the unified diff and apply by line number ──────────
     const hunk = patch.trim() ? parsePatchHunk(patch) : null;
     if (hunk) {
-      const { startLine, deleteCount, insertLines } = hunk;
+      const { startLine, oldLines, newLines } = hunk;
+      const deleteCount = oldLines.length;
       // Validate the hunk lines are still in range
-      if (startLine >= 0 && startLine + deleteCount <= docLines.length) {
-        const startPos = new vscode.Position(startLine, 0);
-        const endLine = startLine + deleteCount;
+      const matchesAt = (lineIndex: number): boolean =>
+        lineIndex >= 0 &&
+        lineIndex + deleteCount <= docLines.length &&
+        oldLines.every((line, index) => docLines[lineIndex + index] === line);
+      let matchedStartLine = startLine;
+      if (!matchesAt(matchedStartLine)) {
+        matchedStartLine = -1;
+        for (let lineIndex = 0; lineIndex <= docLines.length - deleteCount; lineIndex++) {
+          if (matchesAt(lineIndex)) {
+            matchedStartLine = lineIndex;
+            break;
+          }
+        }
+      }
+      if (
+        matchedStartLine >= 0 &&
+        matchedStartLine + deleteCount <= docLines.length
+      ) {
+        const startPos = new vscode.Position(matchedStartLine, 0);
+        const endLine = matchedStartLine + deleteCount;
         // If deleteCount covers complete lines, include their newlines by
         // pointing to column 0 of the line after the last deleted line.
         const endPos =
@@ -413,7 +417,7 @@ async function applyFix(
         // Preserve line endings: join with \n and append trailing \n if
         // the original lines had one (i.e. we're not at the last line).
         replacement =
-          insertLines.join("\n") + (endLine < docLines.length ? "\n" : "");
+          newLines.join("\n") + (endLine < docLines.length ? "\n" : "");
         const edit = new vscode.WorkspaceEdit();
         edit.replace(uri, range, replacement);
         const applied = await vscode.workspace.applyEdit(edit);
@@ -423,6 +427,31 @@ async function applyFix(
         }
       }
     }
+
+      // A compact fallback patch may contain only the changed expression
+      // rather than the complete source line. Replace that expression in
+      // place while preserving the surrounding statement and indentation.
+      if (oldLines.length === 1 && newLines.length === 1) {
+        const lineIndex = docLines.findIndex((line) =>
+          line.includes(oldLines[0])
+        );
+        if (lineIndex >= 0) {
+          const line = docLines[lineIndex];
+          const column = line.indexOf(oldLines[0]);
+          const start = new vscode.Position(lineIndex, column);
+          const end = new vscode.Position(
+            lineIndex,
+            column + oldLines[0].length
+          );
+          const edit = new vscode.WorkspaceEdit();
+          edit.replace(uri, new vscode.Range(start, end), newLines[0]);
+          const applied = await vscode.workspace.applyEdit(edit);
+          if (applied) {
+            await showFixApplied();
+            return;
+          }
+        }
+      }
 
     // ── Strategy 2: exact text match ─────────────────────────────────────────
     const docText = docLines.join("\n");

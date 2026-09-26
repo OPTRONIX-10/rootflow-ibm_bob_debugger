@@ -10,14 +10,6 @@
 // Primitives
 // ---------------------------------------------------------------------------
 
-export interface CommitInfo {
-  hash: string;
-  author: string;
-  date: string;
-  message: string;
-  diff: string;
-}
-
 export interface PropagationNode {
   id: string;
   file: string;
@@ -66,7 +58,6 @@ export interface RootCause {
   explanation: string;
   /** 0.0 – 1.0 */
   confidenceScore: number;
-  introducedByCommit: CommitInfo | null;
 }
 
 export interface SuggestedFix {

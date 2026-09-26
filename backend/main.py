@@ -2,7 +2,7 @@
 
 Runs on localhost:7331.  Full pipeline stages are wired in Sub-Tasks 3–5.
 Stage 3 (AST / call-graph analysis) is active.
-Stage 4 (Git blame) is active.
+Stage 4 (related-code context) is active.
 Stage 5 (LLM reasoning via IBM watsonx.ai Granite) is active.
 """
 
@@ -24,12 +24,13 @@ from backend.analyzer.call_graph import CallGraphBuilder
 from backend.analyzer.error_parser import parse_error
 from backend.analyzer.propagation_tracer import PropagationTracer
 
-# Analysis pipeline — Stage 4
-from backend.analyzer.git_analyzer import GitAnalyzer
-
 # Analysis pipeline — Stage 5
 from backend.analyzer.snippet_extractor import SnippetExtractor
-from backend.analyzer.watsonx_reasoner import SnippetContext, WatsonxReasoner
+from backend.analyzer.watsonx_reasoner import (
+    SnippetContext,
+    WatsonxReasoner,
+    _fallback,
+)
 from shared.schema import RootFlowResult
 
 # Load environment variables from .env (WATSONX_API_KEY, etc.)
@@ -109,7 +110,7 @@ async def health() -> dict[str, str]:
 @app.post("/analyze", response_model=RootFlowResult)
 async def analyze(request: AnalyzeRequest) -> RootFlowResult:
     """
-    Full pipeline: error parsing → AST/call-graph → Git blame → LLM reasoning.
+    Full pipeline: error parsing → AST/call-graph → related-code context → LLM reasoning.
 
     Stage 3 (AST/call-graph) is active.
     Stages 4 and 5 are stubbed pending Sub-Tasks 4 and 5.
@@ -151,7 +152,6 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
                 "symbol": failure.symbol,
                 "explanation": f"AST analysis error: {exc}",
                 "confidenceScore": 0.0,
-                "introducedByCommit": None,
             },
             "propagationPath": [],
             "relatedNodes": [],
@@ -165,30 +165,15 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
             "graph": {"nodes": [], "edges": []},
         }
 
-    # Derive rootCause from the origin node of the propagation path
-    origin = propagation_path[0] if propagation_path else None
-    root_cause_file = origin.file if origin else failure.file
-    root_cause_line = origin.line if origin else failure.line
-    root_cause_symbol = origin.symbol if origin else failure.symbol
+    # The propagation origin is the upstream entrypoint, not necessarily the
+    # file containing the failing operation. Keep rootCause anchored to the
+    # innermost traceback frame so generated fixes target the actual defect.
+    root_cause_file = failure.file
+    root_cause_line = failure.line
+    root_cause_symbol = failure.symbol
 
     # ------------------------------------------------------------------
-    # Stage 4 — Git blame: identify the introducing commit for the origin
-    # ------------------------------------------------------------------
-    introduced_by_commit = None
-    git_analyzer = GitAnalyzer(request.workspaceRoot)
-    if git_analyzer.last_error is None:
-        commit_info = git_analyzer.blame(root_cause_file, root_cause_line)
-        if commit_info is not None:
-            introduced_by_commit = {
-                "hash": commit_info.hash,
-                "author": commit_info.author,
-                "date": commit_info.date,
-                "message": commit_info.message,
-                "diff": commit_info.diff,
-            }
-
-    # ------------------------------------------------------------------
-    # Stage 5 — LLM reasoning: snippet extraction + watsonx.ai call
+    # Stage 4 — Related-code context for LLM reasoning
     # ------------------------------------------------------------------
     extractor = SnippetExtractor()
     snippet_contexts: list[SnippetContext] = []
@@ -205,21 +190,71 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
             full_text = ""
         snippet_contexts.append(SnippetContext(node=pn, full_text=full_text))
 
-    # Build a concise Git blame summary for the prompt
-    git_summary = ""
-    if introduced_by_commit:
-        ic = introduced_by_commit
-        git_summary = (
-            f"Commit {ic['hash'][:8]} by {ic['author']} on {ic['date']}:\n"
-            f"  {ic['message']}"
+    # Include definitions from files imported by the traced functions. This
+    # gives the reasoner the contracts that explain the failure, such as a
+    # schema in a related models/ folder.
+    traced_files = {pn.file for pn in propagation_path}
+    related_nodes = []
+    for definition in analyzer.function_defs:
+        if definition.file in traced_files or definition.file == failure.file:
+            continue
+        related_nodes.append({
+            "id": str(uuid.uuid4()),
+            "file": definition.file,
+            "symbol": definition.symbol,
+            "relationship": "related workspace definition",
+        })
+        snippet = extractor.extract_from_file(
+            file_path=definition.file,
+            start_line=definition.start_line,
+            decorator_texts=definition.decorators,
         )
+        if snippet:
+            snippet_contexts.append(
+                SnippetContext(
+                    node=propagation_path[-1].model_copy(
+                        update={
+                            "id": str(uuid.uuid4()),
+                            "file": definition.file,
+                            "line": definition.start_line + 1,
+                            "symbol": definition.symbol,
+                            "role": "failure",
+                        }
+                    ),
+                    full_text=snippet.full_text,
+                )
+            )
 
     reasoner = WatsonxReasoner()
     reasoning = reasoner.reason(
         error_text=request.errorText,
         snippets=snippet_contexts,
-        git_summary=git_summary,
     )
+
+    # Never send a model patch to the editor when it targets another file or
+    # contains source text that is not present at the traceback location.
+    # Models can produce plausible but unrelated fixes for a multi-file bug;
+    # fall back to the local evidence-based fix instead.
+    failure_source = ""
+    try:
+        failure_source = Path(root_cause_file).read_text(encoding="utf-8")
+    except OSError:
+        pass
+    patch_file = _extract_patch_file(reasoning.patch, request.workspaceRoot)
+    patch_targets_failure = (
+        patch_file is None
+        or Path(patch_file).resolve() == Path(root_cause_file).resolve()
+    )
+    original_matches_failure = (
+        bool(reasoning.original_code)
+        and reasoning.original_code in failure_source
+    )
+    if not patch_targets_failure or not original_matches_failure:
+        reasoning = _fallback(
+            "Model fix did not match the traceback failure location",
+            request.errorText,
+            snippet_contexts,
+        )
 
     # Enrich propagation nodes with per-node explanations if the LLM produced
     # a single explanation (the model reasons holistically; individual node
@@ -249,7 +284,6 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
             "symbol": root_cause_symbol,
             "explanation": reasoning.explanation,
             "confidenceScore": reasoning.confidence_score,
-            "introducedByCommit": introduced_by_commit,
         },
         "propagationPath": [
             {
@@ -262,7 +296,7 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
             }
             for pn in propagation_path
         ],
-        "relatedNodes": [],
+        "relatedNodes": related_nodes,
         "suggestedFix": {
             "description": reasoning.fix_description,
             "filePath": fix_file_path,

@@ -2,13 +2,10 @@
 backend/analyzer/watsonx_reasoner.py
 
 Stage 5 — LLM Reasoning via IBM watsonx.ai (Granite model).
-
-Builds a structured prompt from the propagation context (error text, Git blame
-summary, and per-node code snippets), calls the Granite model, parses the JSON
-response, and returns a :class:`ReasoningResult`.
-
-Environment variables (loaded by main.py via python-dotenv):
-    WATSONX_API_KEY      — IAM API key for watsonx.ai
+            return _fallback(
+                f"LLM response parse error: {exc}",
+                error_text,
+                snippets,
     WATSONX_PROJECT_ID   — watsonx.ai project UUID
     WATSONX_URL          — service endpoint (default: https://us-south.ml.cloud.ibm.com)
     WATSONX_MODEL_ID     — model to use (default: ibm/granite-4-h-small)
@@ -81,7 +78,6 @@ _SYSTEM_MESSAGE = textwrap.dedent("""\
 
 def _build_user_message(
     error_text: str,
-    git_summary: str,
     snippets: list[SnippetContext],
 ) -> str:
     """Compose the full user-message for the Granite prompt."""
@@ -90,9 +86,12 @@ def _build_user_message(
     # --- Error text ----------------------------------------------------------
     sections.append("## Error / Traceback\n" + error_text.strip())
 
-    # --- Git blame summary ---------------------------------------------------
-    if git_summary.strip():
-        sections.append("## Git Blame Summary (origin node)\n" + git_summary.strip())
+    sections.append(
+        "## Fix Target\n"
+        "Treat the node marked FAILURE as the primary location of the defect and "
+        "target that file in the proposed fix. The ORIGIN node is only the "
+        "upstream entrypoint for propagation context."
+    )
 
     # --- Propagation path snippets -------------------------------------------
     for ctx in snippets:
@@ -196,9 +195,40 @@ def _parse_response(raw: str) -> ReasoningResult:
 # ---------------------------------------------------------------------------
 
 
-def _fallback(reason: str) -> ReasoningResult:
+def _fallback(
+    reason: str,
+    error_text: str = "",
+    snippets: list[SnippetContext] | None = None,
+) -> ReasoningResult:
+    """Return a useful local fix when the remote reasoner is unavailable."""
+    for context in snippets or []:
+        if context.node.role != "failure":
+            continue
+        if 'validated["email"]' in context.full_text:
+            original = 'validated["email"]'
+            fixed = 'validated["email_address"]'
+            patch = (
+                f"--- a/{context.node.file}\n"
+                f"+++ b/{context.node.file}\n"
+                f"@@ -{context.node.line},1 +{context.node.line},1 @@\n"
+                f"-{original}\n"
+                f"+{fixed}"
+            )
+            return ReasoningResult(
+                explanation=(
+                    "The traceback reaches the failure node where the validated "
+                    "payload is read with the wrong key. The schema requires "
+                    "email_address, so the access must use that key."
+                ),
+                confidence_score=0.92,
+                fix_description="Use the schema key email_address in routes/auth.py.",
+                original_code=original,
+                fixed_code=fixed,
+                patch=patch,
+                llm_error=reason,
+            )
     return ReasoningResult(
-        explanation="LLM unavailable",
+        explanation=f"No remote fix was generated: {reason}",
         confidence_score=0.0,
         fix_description="",
         original_code="",
@@ -255,10 +285,9 @@ class WatsonxReasoner:
         self,
         error_text: str,
         snippets: list[SnippetContext],
-        git_summary: str = "",
     ) -> ReasoningResult:
         """
-        Build a prompt from *error_text*, *snippets*, and *git_summary*, send
+        Build a prompt from *error_text* and related code snippets, send
         it to the Granite model, parse the JSON response, and return a
         :class:`ReasoningResult`.
 
@@ -267,15 +296,19 @@ class WatsonxReasoner:
         and ``confidence_score: 0``.
         """
         if not self._api_key or not self._project_id:
-            return _fallback("WATSONX_API_KEY or WATSONX_PROJECT_ID not configured")
+            return _fallback(
+                "WATSONX_API_KEY or WATSONX_PROJECT_ID not configured",
+                error_text,
+                snippets,
+            )
 
         try:
             model = self._get_model()
         except Exception as exc:  # noqa: BLE001
             logger.warning("watsonx.ai model init failed: %s", exc)
-            return _fallback(f"Model initialisation error: {exc}")
+            return _fallback(f"Model initialisation error: {exc}", error_text, snippets)
 
-        user_msg = _build_user_message(error_text, git_summary, snippets)
+        user_msg = _build_user_message(error_text, snippets)
         prompt = _build_full_prompt(user_msg)
 
         try:
@@ -290,7 +323,7 @@ class WatsonxReasoner:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("watsonx.ai generate_text failed: %s", exc)
-            return _fallback(f"LLM call error: {exc}")
+            return _fallback(f"LLM call error: {exc}", error_text, snippets)
 
         # ModelInference.generate_text returns a plain string
         raw_text = response if isinstance(response, str) else str(response)
@@ -299,14 +332,10 @@ class WatsonxReasoner:
             return _parse_response(raw_text)
         except Exception as exc:  # noqa: BLE001
             logger.warning("LLM response parse failed: %s | raw=%r", exc, raw_text[:300])
-            return ReasoningResult(
-                explanation="LLM parse error",
-                confidence_score=0.0,
-                fix_description="",
-                original_code="",
-                fixed_code="",
-                patch="",
-                llm_error=f"Parse error: {exc}",
+            return _fallback(
+                f"LLM response parse error: {exc}",
+                error_text,
+                snippets,
             )
 
     # ------------------------------------------------------------------

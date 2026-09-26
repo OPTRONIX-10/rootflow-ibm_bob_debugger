@@ -17,14 +17,6 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 
-class CommitInfo(BaseModel):
-    hash: str
-    author: str
-    date: str
-    message: str
-    diff: str
-
-
 class PropagationNode(BaseModel):
     id: str
     file: str
@@ -73,10 +65,6 @@ class RootCause(BaseModel):
     symbol: str
     explanation: str
     confidence_score: float = Field(ge=0.0, le=1.0, alias="confidenceScore")
-    introduced_by_commit: Optional[CommitInfo] = Field(
-        default=None, alias="introducedByCommit"
-    )
-
     model_config = {"populate_by_name": True}
 
 

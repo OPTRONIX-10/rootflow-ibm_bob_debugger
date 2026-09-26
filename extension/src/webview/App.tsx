@@ -251,10 +251,6 @@ const App: React.FC = () => {
     vscodeApi.postMessage({ command: "openFile", file, line });
   }
 
-  function handleOpenDiff(hash: string) {
-    vscodeApi.postMessage({ command: "openDiff", hash });
-  }
-
   function handleApplyFix(fix: SuggestedFix) {
     vscodeApi.postMessage({
       command: "applyFix",
@@ -330,14 +326,11 @@ const App: React.FC = () => {
     ? result.propagationPath.find((p) => p.id === selectedNode.id) ?? null
     : null;
 
-  // Commit info is always sourced from rootCause (shown at bottom of FixPanel)
-  const commitInfo = result.rootCause.introducedByCommit ?? null;
-
-  // NodeDetailPanel for a clicked node — always passes null for commitInfo since
-  // it's shown in the FixPanel instead
   const showFix = !!(
     result.suggestedFix &&
-    (result.suggestedFix.patch || result.suggestedFix.description)
+    (result.suggestedFix.patch ||
+      result.suggestedFix.description ||
+      result.rootCause.explanation)
   );
 
   // Whether to show the right side panel at all
@@ -383,17 +376,14 @@ const App: React.FC = () => {
             replaced or hidden. */}
         {showSidePanel && (
           <div className="rf-side-panel">
-            {/* FixPanel: always visible when a fix exists, non-dismissable.
-                Commit history from rootCause.introducedByCommit is always
-                shown at the bottom of this panel. */}
+            {/* FixPanel: always visible when a fix exists, non-dismissable. */}
             {showFix && (
               <div className="rf-side-panel__fix">
                 <FixPanel
                   fix={result.suggestedFix}
+                  explanation={result.rootCause.explanation}
                   confidenceScore={result.rootCause.confidenceScore ?? 0}
-                  commitInfo={commitInfo}
                   onApply={handleApplyFix}
-                  onOpenDiff={handleOpenDiff}
                 />
               </div>
             )}
