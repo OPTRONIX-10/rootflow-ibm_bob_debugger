@@ -315,6 +315,16 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
                     "symbol": gn.symbol,
                 }
                 for gn in graph_nodes
+            ] + [
+                {
+                    "id": related["id"],
+                    "label": related["symbol"].rsplit(".", 1)[-1],
+                    "role": "related",
+                    "file": related["file"],
+                    "line": 1,
+                    "symbol": related["symbol"],
+                }
+                for related in related_nodes
             ],
             "edges": [
                 {
@@ -323,6 +333,14 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
                     "label": ge.label,
                 }
                 for ge in graph_edges
+            ] + [
+                {
+                    "source": related["id"],
+                    "target": propagation_path[-1].id,
+                    "label": "related",
+                }
+                for related in related_nodes
+                if propagation_path
             ],
         },
     }

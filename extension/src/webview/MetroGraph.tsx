@@ -163,7 +163,11 @@ const MetroGraph: React.FC<MetroGraphProps> = ({
           )}
 
           {/* Causal-path lines (coloured by role) */}
-          <MetroLine edges={edges} nodeMap={nodeMap} />
+          <MetroLine
+            edges={edges}
+            nodeMap={nodeMap}
+            propagationPath={layout.nodes.filter((node) => node.role !== "related")}
+          />
 
           {/* Station nodes */}
           {layout.nodes.map((node) => (

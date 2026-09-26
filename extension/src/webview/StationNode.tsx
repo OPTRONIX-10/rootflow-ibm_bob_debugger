@@ -20,10 +20,10 @@ interface StationNodeProps {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  origin: "var(--rf-color-origin, #e05252)",
-  propagation: "var(--rf-color-propagation, #d4a017)",
-  failure: "var(--rf-color-failure, #c0392b)",
-  related: "var(--rf-color-related, #8e9aad)",
+  origin: "var(--rf-color-origin, #38d66b)",
+  propagation: "var(--rf-color-propagation, #ffffff)",
+  failure: "var(--rf-color-failure, #ff3b45)",
+  related: "var(--rf-color-related, #ffffff)",
 };
 
 const ROLE_SIZES: Record<string, number> = {
@@ -49,8 +49,8 @@ const StationNode: React.FC<StationNodeProps> = ({
   const color = ROLE_COLORS[role] ?? ROLE_COLORS.related;
   const size = ROLE_SIZES[role] ?? 14;
   const strokeColor = selected
-    ? "var(--vscode-focusBorder, #007acc)"
-    : "var(--vscode-editor-background, #1e1e1e)";
+    ? "var(--vscode-focusBorder, #ffffff)"
+    : "var(--rf-color-station-stroke, #ffffff)";
   const strokeWidth = selected ? 3 : 2;
 
   const handleClick = () => onClick(node);
@@ -72,8 +72,9 @@ const StationNode: React.FC<StationNodeProps> = ({
     // Circle with outer pulse ring
     shape = (
       <>
+        <circle className="station-node__glow" cx={x} cy={y} r={size + 8} fill="none" stroke={color} strokeWidth={2} opacity={0.5} />
         {selected && (
-          <circle cx={x} cy={y} r={size + 8} fill="none" stroke={color} strokeWidth={1.5} opacity={0.35} />
+          <circle cx={x} cy={y} r={size + 12} fill="none" stroke="white" strokeWidth={1.5} opacity={0.8} />
         )}
         <circle cx={x} cy={y} r={size} {...sharedProps} />
         {/* Inner white dot for detail */}
@@ -94,6 +95,7 @@ const StationNode: React.FC<StationNodeProps> = ({
     shape = (
       <>
         <rect
+          className="station-node__glow"
           x={x - size}
           y={y - size}
           width={size * 2}
