@@ -267,7 +267,8 @@ async function handleWebviewMessage(
       const filePath = message.filePath as string;
       const originalCode = message.originalCode as string;
       const fixedCode = message.fixedCode as string;
-      await applyFix(filePath, originalCode, fixedCode);
+      const patch = message.patch as string | undefined;
+      await applyFix(filePath, originalCode, fixedCode, patch ?? "");
       break;
     }
 
@@ -340,101 +341,178 @@ function getOrCreateWebviewPanel(
 // Fix application
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse a unified diff patch and return the first hunk's replaced range.
+ *
+ * Returns { startLine, deleteCount, insertLines } where startLine is 0-based,
+ * deleteCount is how many existing lines to remove, and insertLines are the
+ * new lines to insert (without leading '+').
+ *
+ * Returns null if the patch cannot be parsed.
+ */
+function parsePatchHunk(patch: string): {
+  startLine: number;
+  deleteCount: number;
+  insertLines: string[];
+} | null {
+  const lines = patch.replace(/\r\n/g, "\n").split("\n");
+  // Find the first @@ hunk header, e.g. "@@ -8,7 +8,7 @@"
+  for (const line of lines) {
+    const m = line.match(/^@@\s*-(\d+)(?:,\d+)?\s*\+(\d+)(?:,(\d+))?\s*@@/);
+    if (m) {
+      const oldStart = parseInt(m[1], 10) - 1; // convert to 0-based
+      const hunkIdx = lines.indexOf(line);
+      const hunkLines = lines.slice(hunkIdx + 1);
+      const deleteLines: string[] = [];
+      const insertLines: string[] = [];
+      for (const hl of hunkLines) {
+        if (hl.startsWith("@@")) break; // next hunk
+        if (hl.startsWith("-")) deleteLines.push(hl.slice(1));
+        else if (hl.startsWith("+")) insertLines.push(hl.slice(1));
+        // context lines (space-prefixed) are skipped — we only need counts
+      }
+      return {
+        startLine: oldStart,
+        deleteCount: deleteLines.length,
+        insertLines,
+      };
+    }
+  }
+  return null;
+}
+
 async function applyFix(
   filePath: string,
   originalCode: string,
-  fixedCode: string
+  fixedCode: string,
+  patch: string,
 ): Promise<void> {
   try {
     const uri = vscode.Uri.file(filePath);
     const doc = await vscode.workspace.openTextDocument(uri);
-    const docText = doc.getText();
+    const docLines = doc.getText().split("\n");
 
-    // First try an exact match, then fall back to a whitespace-normalised search
-    // so that minor formatting differences (trailing spaces, CRLF vs LF, etc.)
-    // do not cause spurious "could not locate" errors.
+    let range: vscode.Range;
+    let replacement: string;
+
+    // ── Strategy 1: parse the unified diff and apply by line number ──────────
+    const hunk = patch.trim() ? parsePatchHunk(patch) : null;
+    if (hunk) {
+      const { startLine, deleteCount, insertLines } = hunk;
+      // Validate the hunk lines are still in range
+      if (startLine >= 0 && startLine + deleteCount <= docLines.length) {
+        const startPos = new vscode.Position(startLine, 0);
+        const endLine = startLine + deleteCount;
+        // If deleteCount covers complete lines, include their newlines by
+        // pointing to column 0 of the line after the last deleted line.
+        const endPos =
+          endLine < docLines.length
+            ? new vscode.Position(endLine, 0)
+            : doc.positionAt(doc.getText().length);
+        range = new vscode.Range(startPos, endPos);
+        // Preserve line endings: join with \n and append trailing \n if
+        // the original lines had one (i.e. we're not at the last line).
+        replacement =
+          insertLines.join("\n") + (endLine < docLines.length ? "\n" : "");
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(uri, range, replacement);
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (applied) {
+          await showFixApplied();
+          return;
+        }
+      }
+    }
+
+    // ── Strategy 2: exact text match ─────────────────────────────────────────
+    const docText = docLines.join("\n");
     let startOffset = docText.indexOf(originalCode);
-    let matchLength = originalCode.length;
-
-    if (startOffset === -1) {
-      // Normalise both sides: collapse runs of whitespace to a single space
-      const normalise = (s: string) =>
-        s.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
-      const normOriginal = normalise(originalCode);
-      const normDoc = normalise(docText);
-
-      const normOffset = normDoc.indexOf(normOriginal);
-      if (normOffset === -1) {
-        vscode.window.showErrorMessage(
-          "RootFlow: Could not locate the original code in the file. " +
-            "The file may have been modified since analysis."
-        );
+    if (startOffset !== -1) {
+      const startPos = doc.positionAt(startOffset);
+      const endPos = doc.positionAt(startOffset + originalCode.length);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, new vscode.Range(startPos, endPos), fixedCode);
+      const applied = await vscode.workspace.applyEdit(edit);
+      if (applied) {
+        await showFixApplied();
         return;
       }
+    }
 
-      // Map the normalised offset back to a range in the real document by
-      // scanning the original text to skip the same number of non-whitespace
-      // characters that precede normOffset in normDoc.
-      // Simpler approach: locate via line-by-line matching of the first line.
-      const firstLine = originalCode
-        .replace(/\r\n/g, "\n")
-        .split("\n")
-        .find((l) => l.trim().length > 0)
-        ?.trim();
-      if (firstLine) {
-        // Find a line in the document that contains the first significant line
-        const lines = docText.split("\n");
-        for (let li = 0; li < lines.length; li++) {
-          if (lines[li].includes(firstLine)) {
-            // Compute byte offset of this line
-            const offset = lines.slice(0, li).join("\n").length + (li > 0 ? 1 : 0);
-            // Extend to cover the full originalCode block (by line count)
-            const origLines = originalCode.replace(/\r\n/g, "\n").split("\n");
-            const endLineIdx = li + origLines.length - 1;
-            const endLineOffset =
-              lines.slice(0, endLineIdx).join("\n").length +
-              (endLineIdx > 0 ? 1 : 0) +
-              lines[endLineIdx].length;
-            startOffset = offset;
-            matchLength = endLineOffset - offset;
-            break;
+    // ── Strategy 3: trim-each-line match ─────────────────────────────────────
+    // The LLM often returns originalCode without leading indentation.
+    // Search document lines for a contiguous block whose trimmed content
+    // matches the trimmed lines of originalCode.
+    const origLines = originalCode.replace(/\r\n/g, "\n").split("\n")
+      .map((l) => l.trimEnd());
+    // Remove empty leading/trailing lines from the search pattern
+    while (origLines.length && !origLines[0].trim()) origLines.shift();
+    while (origLines.length && !origLines[origLines.length - 1].trim()) origLines.pop();
+
+    if (origLines.length > 0) {
+      const firstTrimmed = origLines[0].trim();
+      for (let li = 0; li < docLines.length; li++) {
+        if (docLines[li].trim() === firstTrimmed) {
+          // Check subsequent lines
+          let allMatch = true;
+          for (let k = 1; k < origLines.length; k++) {
+            const docIdx = li + k;
+            if (
+              docIdx >= docLines.length ||
+              docLines[docIdx].trim() !== origLines[k].trim()
+            ) {
+              allMatch = false;
+              break;
+            }
+          }
+          if (allMatch) {
+            const endLineIdx = li + origLines.length;
+            const startPos = new vscode.Position(li, 0);
+            const endPos =
+              endLineIdx < docLines.length
+                ? new vscode.Position(endLineIdx, 0)
+                : doc.positionAt(docText.length);
+            // Preserve the original indentation: re-indent fixedCode to match
+            const indent = docLines[li].match(/^(\s*)/)?.[1] ?? "";
+            const reindentedFix = fixedCode
+              .replace(/\r\n/g, "\n")
+              .split("\n")
+              .map((l, i) => (i === 0 ? indent + l.trimStart() : l))
+              .join("\n");
+            const repl =
+              reindentedFix + (endLineIdx < docLines.length ? "\n" : "");
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(uri, new vscode.Range(startPos, endPos), repl);
+            const applied = await vscode.workspace.applyEdit(edit);
+            if (applied) {
+              await showFixApplied();
+              return;
+            }
           }
         }
       }
-
-      if (startOffset === -1) {
-        vscode.window.showErrorMessage(
-          "RootFlow: Could not locate the original code in the file. " +
-            "The file may have been modified since analysis."
-        );
-        return;
-      }
     }
 
-    const startPos = doc.positionAt(startOffset);
-    const endPos = doc.positionAt(startOffset + matchLength);
-    const range = new vscode.Range(startPos, endPos);
-
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(uri, range, fixedCode);
-
-    const applied = await vscode.workspace.applyEdit(edit);
-    if (applied) {
-      const runTests = "Run Tests";
-      const choice = await vscode.window.showInformationMessage(
-        "RootFlow: Fix applied — run your tests to verify.",
-        runTests
-      );
-      if (choice === runTests) {
-        vscode.commands.executeCommand("workbench.action.tasks.test");
-      }
-    } else {
-      vscode.window.showErrorMessage("RootFlow: Failed to apply the fix.");
-    }
+    // All strategies failed
+    vscode.window.showErrorMessage(
+      "RootFlow: Could not locate the original code in the file. " +
+        "The file may have been modified since analysis."
+    );
   } catch (err) {
     vscode.window.showErrorMessage(
       `RootFlow: Error applying fix — ${(err as Error).message}`
     );
+  }
+}
+
+async function showFixApplied(): Promise<void> {
+  const runTests = "Run Tests";
+  const choice = await vscode.window.showInformationMessage(
+    "RootFlow: Fix applied — run your tests to verify.",
+    runTests
+  );
+  if (choice === runTests) {
+    vscode.commands.executeCommand("workbench.action.tasks.test");
   }
 }
 

@@ -48,6 +48,44 @@ app.add_middleware(
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_patch_file(patch: str, workspace_root: str) -> str | None:
+    """
+    Parse the '--- a/<path>' or '--- <path>' header from a unified diff and
+    return the resolved absolute file path within *workspace_root*.
+
+    Returns None if the patch is empty, malformed, or the resolved path does
+    not exist on disk (so the caller can fall back to root_cause_file).
+    """
+    import re
+    from pathlib import Path
+
+    if not patch.strip():
+        return None
+
+    for line in patch.splitlines():
+        # Match "--- a/some/path" or "--- some/path" (no a/ prefix)
+        m = re.match(r"^---\s+(?:a/)?(.+)$", line)
+        if m:
+            rel = m.group(1).strip()
+            # Strip any trailing tab-separated metadata (e.g. timestamps)
+            rel = re.split(r"\t", rel)[0].strip()
+            if rel in ("/dev/null", ""):
+                continue
+            candidate = Path(workspace_root) / rel
+            if candidate.is_file():
+                return str(candidate)
+            # Also try the path as-is (might already be absolute)
+            candidate2 = Path(rel)
+            if candidate2.is_absolute() and candidate2.is_file():
+                return str(candidate2)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Request / response models (mirrors shared/schema.py)
 # ---------------------------------------------------------------------------
 
@@ -192,6 +230,11 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
             update={"explanation": reasoning.explanation}
         )
 
+    # Determine which file the fix targets.
+    # Priority: parse the "--- a/<path>" header from the patch (most reliable),
+    # then fall back to the root_cause_file.
+    fix_file_path = _extract_patch_file(reasoning.patch, request.workspaceRoot) or root_cause_file
+
     response = {
         "sessionId": session_id,
         "timestamp": now,
@@ -222,7 +265,7 @@ async def analyze(request: AnalyzeRequest) -> RootFlowResult:
         "relatedNodes": [],
         "suggestedFix": {
             "description": reasoning.fix_description,
-            "filePath": root_cause_file,
+            "filePath": fix_file_path,
             "originalCode": reasoning.original_code,
             "fixedCode": reasoning.fixed_code,
             "patch": reasoning.patch,
