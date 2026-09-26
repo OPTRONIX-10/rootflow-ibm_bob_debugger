@@ -12,7 +12,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:rootflow.analyze"
+    "onCommand:rootflow.analyze",
+    "onWebviewPanel:rootflowVisualization"
   ],
   "main": "./dist/extension.js",
   "contributes": {

@@ -11,7 +11,7 @@ Environment variables (loaded by main.py via python-dotenv):
     WATSONX_API_KEY      — IAM API key for watsonx.ai
     WATSONX_PROJECT_ID   — watsonx.ai project UUID
     WATSONX_URL          — service endpoint (default: https://us-south.ml.cloud.ibm.com)
-    WATSONX_MODEL_ID     — model to use (default: ibm-granite/granite-4.0-h-small)
+    WATSONX_MODEL_ID     — model to use (default: ibm/granite-4-h-small)
 """
 
 from __future__ import annotations
@@ -243,7 +243,7 @@ class WatsonxReasoner:
             "WATSONX_URL", "https://us-south.ml.cloud.ibm.com"
         )
         self._model_id = model_id or os.environ.get(
-            "WATSONX_MODEL_ID", "ibm-granite/granite-4.0-h-small"
+            "WATSONX_MODEL_ID", "ibm/granite-4-h-small"
         )
         self._model: Optional[object] = None  # lazy-initialised ModelInference
 
@@ -285,6 +285,7 @@ class WatsonxReasoner:
                     "max_new_tokens": 1024,
                     "temperature": 0.0,
                     "top_p": 1.0,
+                    "time_limit": 60000,  # 60 s hard timeout (ms)
                 },
             )
         except Exception as exc:  # noqa: BLE001

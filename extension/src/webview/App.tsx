@@ -198,6 +198,7 @@ const App: React.FC = () => {
       }
     }
     window.addEventListener("message", onMessage);
+    vscodeApi.postMessage({ command: "ready" });
     return () => window.removeEventListener("message", onMessage);
   }, []);
 

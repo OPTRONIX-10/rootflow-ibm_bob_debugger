@@ -33,7 +33,7 @@ cp .env.example .env
 | `WATSONX_API_KEY` | **Yes** | — | IBM Cloud IAM API key for watsonx.ai |
 | `WATSONX_PROJECT_ID` | **Yes** | — | watsonx.ai project UUID |
 | `WATSONX_URL` | No | `https://us-south.ml.cloud.ibm.com` | watsonx.ai service endpoint |
-| `WATSONX_MODEL_ID` | No | `ibm-granite/granite-4.0-h-small` | Granite model ID |
+| `WATSONX_MODEL_ID` | No | `ibm/granite-4-h-small` | Granite model ID |
 | `ROOTFLOW_PORT` | No | `7331` | Local port the server listens on |
 
 > **Note:** If `WATSONX_API_KEY` or `WATSONX_PROJECT_ID` are missing, the LLM

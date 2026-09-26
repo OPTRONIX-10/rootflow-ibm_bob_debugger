@@ -10,6 +10,8 @@ import type { RootFlowResult } from "shared/schema";
 
 export { RootFlowResult };
 
+const ANALYSIS_TIMEOUT_MS = 75_000;
+
 export class AnalysisClient {
   private readonly baseUrl: string;
 
@@ -31,8 +33,8 @@ export class AnalysisClient {
 
     return new Promise((resolve, reject) => {
       const options: http.RequestOptions = {
-        hostname: "localhost",
-        port: 7331,
+        hostname: new URL(this.baseUrl).hostname,
+        port: Number(new URL(this.baseUrl).port),
         path: "/analyze",
         method: "POST",
         headers: {
@@ -46,6 +48,7 @@ export class AnalysisClient {
         res.setEncoding("utf8");
         res.on("data", (chunk: string) => (raw += chunk));
         res.on("end", () => {
+          const responsePreview = raw.slice(0, 200).replace(/\s+/g, " ");
           if (res.statusCode !== 200) {
             let serverMsg = raw;
             try {
@@ -62,13 +65,24 @@ export class AnalysisClient {
             return;
           }
 
+          if (!raw.trim()) {
+            reject(
+              new Error(
+                "RootFlow backend returned an empty response. " +
+                  "Check the RootFlow output channel for backend errors."
+              )
+            );
+            return;
+          }
+
           try {
             const result: RootFlowResult = JSON.parse(raw);
             resolve(result);
           } catch (e) {
             reject(
               new Error(
-                `Failed to parse RootFlowResult from backend response: ${(e as Error).message}`
+                `Failed to parse RootFlowResult from backend response: ${(e as Error).message}. ` +
+                  `Response preview: ${responsePreview || "<empty>"}`
               )
             );
           }
@@ -78,6 +92,16 @@ export class AnalysisClient {
       req.on("error", (err: NodeJS.ErrnoException) => {
         reject(
           new Error(`Could not reach RootFlow backend: ${err.message}`)
+        );
+      });
+
+      req.setTimeout(ANALYSIS_TIMEOUT_MS, () => {
+        req.destroy();
+        reject(
+          new Error(
+            "RootFlow analysis timed out after 75 s. " +
+              "Check the RootFlow output channel and backend logs."
+          )
         );
       });
 

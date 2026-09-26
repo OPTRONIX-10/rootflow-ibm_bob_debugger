@@ -8,7 +8,9 @@
  */
 
 import * as cp from "child_process";
+import * as fs from "fs";
 import * as net from "net";
+import * as path from "path";
 import * as vscode from "vscode";
 
 export const SERVER_PORT = 7331;
@@ -69,6 +71,37 @@ function waitForPort(
   });
 }
 
+function findProjectRoot(workspaceRoot: string): string {
+  if (fs.existsSync(path.join(workspaceRoot, "backend", "main.py"))) {
+    return workspaceRoot;
+  }
+
+  const parentRoot = path.dirname(workspaceRoot);
+  if (fs.existsSync(path.join(parentRoot, "backend", "main.py"))) {
+    return parentRoot;
+  }
+
+  return workspaceRoot;
+}
+
+function resolvePythonPath(configuredPath: string, projectRoot: string): string {
+  if (configuredPath !== "python") {
+    return configuredPath;
+  }
+
+  const candidates = process.platform === "win32"
+    ? [
+        path.join(projectRoot, ".venv", "Scripts", "python.exe"),
+        path.join(projectRoot, "backend", ".venv", "Scripts", "python.exe"),
+      ]
+    : [
+        path.join(projectRoot, ".venv", "bin", "python"),
+        path.join(projectRoot, "backend", ".venv", "bin", "python"),
+      ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? configuredPath;
+}
+
 export class ServerManager implements vscode.Disposable {
   private childProcess: cp.ChildProcess | null = null;
   private outputChannel: vscode.OutputChannel;
@@ -89,10 +122,12 @@ export class ServerManager implements vscode.Disposable {
     }
 
     const config = vscode.workspace.getConfiguration("rootflow");
-    const pythonPath: string = config.get("pythonPath") ?? "python";
+    const configuredPythonPath: string = config.get("pythonPath") ?? "python";
 
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    const cwd = workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
+    const workspaceRoot = workspaceFolders?.[0]?.uri?.fsPath ?? process.cwd();
+    const cwd = findProjectRoot(workspaceRoot);
+    const pythonPath = resolvePythonPath(configuredPythonPath, cwd);
 
     this.outputChannel.appendLine(
       `[RootFlow] Starting backend: ${pythonPath} -m uvicorn backend.main:app --port ${SERVER_PORT}`

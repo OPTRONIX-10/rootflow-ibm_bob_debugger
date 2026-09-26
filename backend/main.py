@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from pathlib import Path
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -29,9 +30,11 @@ from backend.analyzer.git_analyzer import GitAnalyzer
 # Analysis pipeline — Stage 5
 from backend.analyzer.snippet_extractor import SnippetExtractor
 from backend.analyzer.watsonx_reasoner import SnippetContext, WatsonxReasoner
+from shared.schema import RootFlowResult
 
 # Load environment variables from .env (WATSONX_API_KEY, etc.)
-load_dotenv()
+# Resolve relative to this file so the server works regardless of cwd.
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 app = FastAPI(title="RootFlow Analysis Server", version="0.1.0")
 
@@ -65,8 +68,8 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "version": "0.1.0"}
 
 
-@app.post("/analyze")
-async def analyze(request: AnalyzeRequest) -> dict:  # type: ignore[return]
+@app.post("/analyze", response_model=RootFlowResult)
+async def analyze(request: AnalyzeRequest) -> RootFlowResult:
     """
     Full pipeline: error parsing → AST/call-graph → Git blame → LLM reasoning.
 
@@ -189,7 +192,7 @@ async def analyze(request: AnalyzeRequest) -> dict:  # type: ignore[return]
             update={"explanation": reasoning.explanation}
         )
 
-    return {
+    response = {
         "sessionId": session_id,
         "timestamp": now,
         "errorInput": {
@@ -246,6 +249,12 @@ async def analyze(request: AnalyzeRequest) -> dict:  # type: ignore[return]
             ],
         },
     }
+    # Validate and normalize aliases before FastAPI serializes the response.
+    # This prevents a late serialization failure from reaching the client as
+    # an apparently empty 200 response.
+    result =  RootFlowResult.model_validate(response)
+    print(result)
+    return result
 
 
 # ---------------------------------------------------------------------------

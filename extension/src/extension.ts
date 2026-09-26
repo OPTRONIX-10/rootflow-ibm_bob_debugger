@@ -27,6 +27,10 @@ let analysisClient: AnalysisClient;
 
 /** The single Webview panel instance (reused across analyses). */
 let webviewPanel: vscode.WebviewPanel | undefined;
+let webviewReady = false;
+let webviewReadyPromise: Promise<void> | undefined;
+let resolveWebviewReady: (() => void) | undefined;
+const WEBVIEW_READY_TIMEOUT_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Activation
@@ -41,6 +45,41 @@ export function activate(context: vscode.ExtensionContext): void {
     "rootflow.analyze",
     async () => runAnalysis(context)
   );
+
+  // Register a serializer so VS Code can restore (or cleanly discard) any
+  // RootFlow webview panel that was open in a previous session.  Without this,
+  // VS Code throws an unhandled "cannot open webview-panel" CodeExpectedError
+  // every time the extension is reloaded while a panel was already open.
+  vscode.window.registerWebviewPanelSerializer("rootflowVisualization", {
+    async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
+      // Rehydrate the panel: set its HTML and wire up message handlers so the
+      // restored panel works exactly like a freshly created one.
+      panel.webview.html = buildWebviewHtml(panel.webview, context.extensionPath);
+      webviewPanel = panel;
+      webviewReady = false;
+      webviewReadyPromise = new Promise<void>((resolve) => {
+        resolveWebviewReady = resolve;
+      });
+      panel.webview.onDidReceiveMessage(
+        async (message: { command: string; [key: string]: unknown }) => {
+          if (message.command === "ready") {
+            webviewReady = true;
+            resolveWebviewReady?.();
+            return;
+          }
+          await handleWebviewMessage(message, context);
+        },
+        undefined,
+        context.subscriptions
+      );
+      panel.onDidDispose(() => {
+        webviewPanel = undefined;
+        webviewReady = false;
+        webviewReadyPromise = undefined;
+        resolveWebviewReady = undefined;
+      });
+    },
+  });
 
   context.subscriptions.push(analyzeCommand, outputChannel, serverManager);
 }
@@ -149,8 +188,19 @@ async function runAnalysis(context: vscode.ExtensionContext): Promise<void> {
 
   // 4. Open / reveal Webview panel and show loading indicator -----------------
   const panel = getOrCreateWebviewPanel(context);
-  panel.webview.postMessage({ command: "loading" });
   panel.reveal(vscode.ViewColumn.Beside);
+
+  // Wait for the React app to attach its message listener. A fixed delay is
+  // racy because the webview bundle may take longer to load.
+  if (!webviewReady && webviewReadyPromise) {
+    await Promise.race([
+      webviewReadyPromise,
+      new Promise<void>((resolve) =>
+        setTimeout(resolve, WEBVIEW_READY_TIMEOUT_MS)
+      ),
+    ]);
+  }
+  panel.webview.postMessage({ command: "loading" });
 
   // 5. Run analysis ------------------------------------------------------------
   try {
@@ -169,6 +219,62 @@ async function runAnalysis(context: vscode.ExtensionContext): Promise<void> {
     panel.webview.postMessage({ command: "error", message: msg });
     vscode.window.showErrorMessage(`RootFlow: Analysis failed — ${msg}`);
     outputChannel.appendLine(`[RootFlow] Analysis error: ${msg}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Webview message handler (shared by panel creation and panel serializer)
+// ---------------------------------------------------------------------------
+
+async function handleWebviewMessage(
+  message: { command: string; [key: string]: unknown },
+  context: vscode.ExtensionContext
+): Promise<void> {
+  switch (message.command) {
+    case "openFile": {
+      const file = message.file as string;
+      const line = (message.line as number | undefined) ?? 1;
+      try {
+        const doc = await vscode.workspace.openTextDocument(
+          vscode.Uri.file(file)
+        );
+        await vscode.window.showTextDocument(doc, {
+          selection: new vscode.Range(line - 1, 0, line - 1, 0),
+          preserveFocus: false,
+        });
+      } catch {
+        vscode.window.showErrorMessage(
+          `RootFlow: Could not open file ${file}`
+        );
+      }
+      break;
+    }
+
+    case "openDiff": {
+      const hash = message.hash as string;
+      vscode.commands
+        .executeCommand("git.showCommit", hash)
+        .then(undefined, () => {
+          vscode.window.showInformationMessage(
+            `RootFlow: Commit ${hash}. ` +
+              `Use the Source Control panel to inspect this commit.`
+          );
+        });
+      break;
+    }
+
+    case "applyFix": {
+      const filePath = message.filePath as string;
+      const originalCode = message.originalCode as string;
+      const fixedCode = message.fixedCode as string;
+      await applyFix(filePath, originalCode, fixedCode);
+      break;
+    }
+
+    case "retry": {
+      vscode.commands.executeCommand("rootflow.analyze");
+      break;
+    }
   }
 }
 
@@ -201,58 +307,20 @@ function getOrCreateWebviewPanel(
     webviewPanel.webview,
     context.extensionPath
   );
+  webviewReady = false;
+  webviewReadyPromise = new Promise<void>((resolve) => {
+    resolveWebviewReady = resolve;
+  });
 
   // Handle messages from the Webview -----------------------------------------
   webviewPanel.webview.onDidReceiveMessage(
     async (message: { command: string; [key: string]: unknown }) => {
-      switch (message.command) {
-        case "openFile": {
-          const file = message.file as string;
-          const line = (message.line as number | undefined) ?? 1;
-          try {
-            const doc = await vscode.workspace.openTextDocument(
-              vscode.Uri.file(file)
-            );
-            await vscode.window.showTextDocument(doc, {
-              selection: new vscode.Range(line - 1, 0, line - 1, 0),
-              preserveFocus: false,
-            });
-          } catch {
-            vscode.window.showErrorMessage(
-              `RootFlow: Could not open file ${file}`
-            );
-          }
-          break;
-        }
-
-        case "openDiff": {
-          const hash = message.hash as string;
-          // Show the commit diff using the built-in git extension command.
-          vscode.commands
-            .executeCommand("git.showCommit", hash)
-            .then(undefined, () => {
-              vscode.window.showInformationMessage(
-                `RootFlow: Commit ${hash}. ` +
-                  `Use the Source Control panel to inspect this commit.`
-              );
-            });
-          break;
-        }
-
-        case "applyFix": {
-          const filePath = message.filePath as string;
-          const originalCode = message.originalCode as string;
-          const fixedCode = message.fixedCode as string;
-          await applyFix(filePath, originalCode, fixedCode);
-          break;
-        }
-
-        case "retry": {
-          // Re-run the last analysis — just trigger the command again.
-          vscode.commands.executeCommand("rootflow.analyze");
-          break;
-        }
+      if (message.command === "ready") {
+        webviewReady = true;
+        resolveWebviewReady?.();
+        return;
       }
+      await handleWebviewMessage(message, context);
     },
     undefined,
     context.subscriptions
@@ -260,6 +328,9 @@ function getOrCreateWebviewPanel(
 
   webviewPanel.onDidDispose(() => {
     webviewPanel = undefined;
+    webviewReady = false;
+    webviewReadyPromise = undefined;
+    resolveWebviewReady = undefined;
   });
 
   return webviewPanel;
