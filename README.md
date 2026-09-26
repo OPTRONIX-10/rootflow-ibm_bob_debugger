@@ -102,9 +102,8 @@ python main.py
 
 1. Open the `extension/` folder in VS Code.
 2. Press **F5** to launch the **Extension Development Host**.
-3. In the new VS Code window, select an error message in the editor or terminal and run:
+3. In the new VS Code window, copy an error message in the editor or terminal and run:
    - **Command Palette** → `RootFlow: Analyze Bug`
-   - Right-click in the editor → `RootFlow: Analyze Bug`
    - Keyboard shortcut: `Ctrl+Shift+R` (Windows/Linux) / `Cmd+Shift+R` (macOS)
 
 ---
@@ -170,22 +169,19 @@ Backend Analysis Server  localhost:7331  (Python + FastAPI)
 
 ## Example Project (Fixture)
 
-`examples/buggy_project/` is a minimal four-file Python project used as the canonical integration test fixture.
+`examples/sample_project/` is a minimal  Python project used for testing the extension.
 
 ```
-examples/buggy_project/
-├── utils.py          # contains the known ZeroDivisionError bug in `percentage()`
-├── stats.py          # calls utils.percentage via compute_ratio / summarise
-├── report.py         # top-level entry point that calls stats.summarise
+examples/sample_project/
+├── models.py          
+├── routes.py          
+├── docs   
 └── tests/
-    └── test_report.py  # pytest test — test_empty_dataset_zero_total FAILS (intentionally)
+    └── test_auth.py  
 ```
 
-Run the failing test to see the bug:
 
-```bash
-python -m pytest examples/buggy_project/tests/test_report.py -v
-```
+
 
 ---
 
